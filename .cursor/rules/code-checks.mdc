@@ -1,0 +1,52 @@
+---
+description: Code check process for the PorTAL Python pipeline — cleanliness, conciseness, no excess code
+globs: pipeline/**/*.py
+alwaysApply: false
+---
+
+# Code Checks (PorTAL pipeline)
+
+Run from `pipeline/portal/` before considering Python work done. All commands
+use `uv run` so they hit the project venv.
+
+## Required checks (in order)
+
+```bash
+uv run ruff check --fix .        # lint + autofix (imports, type syntax, unused)
+uv run ruff format .             # format
+uv run ruff check .              # must end clean
+uv run python -m pytest -q       # tests must pass
+```
+
+Smoke-test imports + CLI when modules change:
+
+```bash
+uv run python -c "import portal.cli, portal.port"   # modules import
+uv run portal --help                                # CLI wires up
+```
+
+## Cleanliness & conciseness
+
+- **No excess code.** Delete dead code, unused imports/vars, and stubs that
+  aren't wired in. Don't leave commented-out blocks or speculative helpers.
+- **No narration comments.** Comments explain non-obvious *why*, never restate
+  *what* the code does (`# increment counter` is banned).
+- **Concise.** Prefer the smallest correct implementation. Reuse existing config
+  schemas (`portal.config`) and artifact helpers (`portal.artifacts`) instead of
+  re-implementing save/load/hash logic.
+- **Modern Python (3.11+).** `X | None` over `Optional[X]`, `StrEnum` over
+  `(str, Enum)`, `datetime.UTC` over `timezone.utc`. Ruff (`UP` rules) enforces this.
+
+## Fixing lint the right way
+
+```python
+# BAD — old syntax, unused import, narration
+import json  # unused
+from typing import Optional
+def f(x: Optional[int]) -> None:  # convert to int | None
+    y = 1  # set y to 1
+    return None
+
+# GOOD
+def f(x: int | None) -> None: ...
+```

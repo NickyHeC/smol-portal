@@ -92,8 +92,10 @@ def evaluate_adapter(
 
     result_dir = save_eval_results(metrics, eval_config, output_dir)
 
-    print(f"  [eval] loss={metrics['loss']}  ppl={metrics['perplexity']}  "
-          f"samples={metrics['num_samples']}")
+    print(
+        f"  [eval] loss={metrics['loss']}  ppl={metrics['perplexity']}  "
+        f"samples={metrics['num_samples']}"
+    )
     return result_dir
 
 

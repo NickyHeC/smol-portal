@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -27,7 +26,7 @@ EVAL_FILENAME = "eval_results.json"
 # ---------------------------------------------------------------------------
 
 
-class ArtifactKind(str, Enum):
+class ArtifactKind(StrEnum):
     TASK_LATENT = "task_latent"
     ADAPTER = "adapter"
     EVAL = "eval"

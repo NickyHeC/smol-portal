@@ -11,7 +11,7 @@ Commands:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -37,7 +37,7 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def main(
     version: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option("--version", "-V", callback=_version_callback, is_eager=True),
     ] = None,
 ) -> None:
@@ -60,7 +60,7 @@ def train(
     lr: Annotated[float, typer.Option(help="Learning rate.")] = 2e-4,
     batch_size: Annotated[int, typer.Option(help="Batch size.")] = 4,
     max_seq_length: Annotated[int, typer.Option(help="Max sequence length.")] = 512,
-    max_samples: Annotated[Optional[int], typer.Option(help="Limit dataset rows.")] = None,
+    max_samples: Annotated[int | None, typer.Option(help="Limit dataset rows.")] = None,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
 ) -> None:
     """Train a LoRA adapter on a source model for a given task."""
@@ -94,7 +94,9 @@ def extract(
     adapter_dir: Annotated[
         Path, typer.Option("--adapter-dir", "-a", help="Path to trained LoRA adapter.")
     ],
-    model: Annotated[str, typer.Option("--model", "-m", help="Source model the adapter was trained on.")],
+    model: Annotated[
+        str, typer.Option("--model", "-m", help="Source model the adapter was trained on.")
+    ],
     task: Annotated[str, typer.Option("--task", "-t", help="Task name.")],
     output_dir: Annotated[Path, typer.Option("--output-dir", "-o")] = DEFAULT_OUTPUT_DIR,
     latent_dim: Annotated[int, typer.Option(help="Task latent dimensionality.")] = 256,
@@ -130,7 +132,7 @@ def convert(
     target: Annotated[str, typer.Option("--target", "-t", help="Target model name or HF id.")],
     task: Annotated[str, typer.Option("--task", help="Task name.")],
     output_dir: Annotated[Path, typer.Option("--output-dir", "-o")] = DEFAULT_OUTPUT_DIR,
-    calibration_dataset: Annotated[Optional[str], typer.Option("--cal-dataset")] = None,
+    calibration_dataset: Annotated[str | None, typer.Option("--cal-dataset")] = None,
     calibration_samples: Annotated[int, typer.Option("--cal-samples")] = 256,
     epochs: Annotated[int, typer.Option(help="Converter training epochs.")] = 30,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
@@ -146,9 +148,7 @@ def convert(
         num_epochs=epochs,
         seed=seed,
     )
-    console.print(
-        f"[bold]Converting task latent → [cyan]{target}[/] adapter…"
-    )
+    console.print(f"[bold]Converting task latent → [cyan]{target}[/] adapter…")
     result_dir = convert_latent_to_adapter(
         latent_dir=latent_dir,
         task_name=task,
@@ -168,13 +168,15 @@ def eval_cmd(
     adapter_dir: Annotated[
         Path, typer.Option("--adapter-dir", "-a", help="Path to LoRA adapter to evaluate.")
     ],
-    model: Annotated[str, typer.Option("--model", "-m", help="Base model the adapter was made for.")],
+    model: Annotated[
+        str, typer.Option("--model", "-m", help="Base model the adapter was made for.")
+    ],
     task: Annotated[str, typer.Option("--task", "-t", help="Task name.")],
     dataset: Annotated[str, typer.Option("--dataset", "-d", help="HuggingFace dataset id.")],
     output_dir: Annotated[Path, typer.Option("--output-dir", "-o")] = DEFAULT_OUTPUT_DIR,
     split: Annotated[str, typer.Option(help="Dataset split for eval.")] = "test",
     batch_size: Annotated[int, typer.Option(help="Batch size.")] = 8,
-    max_samples: Annotated[Optional[int], typer.Option(help="Limit eval rows.")] = None,
+    max_samples: Annotated[int | None, typer.Option(help="Limit eval rows.")] = None,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
 ) -> None:
     """Evaluate an adapter on a benchmark."""
@@ -214,7 +216,7 @@ def port(
         bool, typer.Option("--skip-train", help="Skip source LoRA training (reuse existing).")
     ] = False,
     source_adapter_dir: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option("--source-adapter-dir", help="Existing source adapter to reuse."),
     ] = None,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
@@ -231,11 +233,9 @@ def port(
         output_dir=output_dir,
         skip_train=skip_train,
     )
-    console.print(
-        f"[bold]Porting [cyan]{source}[/] → [cyan]{target}[/] on task [green]{task}[/]…"
-    )
+    console.print(f"[bold]Porting [cyan]{source}[/] → [cyan]{target}[/] on task [green]{task}[/]…")
     results = run_port_pipeline(cfg, source_adapter_dir=source_adapter_dir)
-    console.print(f"\n[bold green]✓ Pipeline complete.[/]")
+    console.print("\n[bold green]✓ Pipeline complete.[/]")
     console.print(f"  Source adapter : {results['source_adapter_dir']}")
     console.print(f"  Task latent    : {results['latent_dir']}")
     console.print(f"  Target adapter : {results['target_adapter_dir']}")

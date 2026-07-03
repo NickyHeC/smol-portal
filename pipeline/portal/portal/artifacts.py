@@ -22,7 +22,7 @@ Artifact layout on disk (content-addressed):
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +37,6 @@ from portal.config import (
     ArtifactKind,
     content_hash,
 )
-
 
 # ---------------------------------------------------------------------------
 # Task latents
@@ -90,9 +89,7 @@ def save_adapter(
     model.save_pretrained(str(adapter_dir))
 
     meta = {**config, "kind": kind, "created_at": _now_iso()}
-    (artifact_dir / "adapter_meta.json").write_text(
-        json.dumps(meta, indent=2, default=str)
-    )
+    (artifact_dir / "adapter_meta.json").write_text(json.dumps(meta, indent=2, default=str))
     return artifact_dir
 
 
@@ -163,4 +160,4 @@ def _artifact_dir(
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

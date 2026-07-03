@@ -6,7 +6,8 @@ from pathlib import Path
 
 import torch
 from datasets import load_dataset
-from peft import LoraConfig as PeftLoraConfig, TaskType, get_peft_model
+from peft import LoraConfig as PeftLoraConfig
+from peft import TaskType, get_peft_model
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,

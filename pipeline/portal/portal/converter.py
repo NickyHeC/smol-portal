@@ -19,7 +19,8 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from datasets import load_dataset
-from peft import LoraConfig as PeftLoraConfig, TaskType, get_peft_model
+from peft import LoraConfig as PeftLoraConfig
+from peft import TaskType, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from portal.artifacts import load_task_latent, save_adapter
