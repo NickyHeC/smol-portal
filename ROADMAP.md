@@ -5,84 +5,29 @@
 Run Ramp Labs' **PorTAL** fine-tuning process **securely** inside
 **smolvm microVMs** on one or more **local NVIDIA GPUs**.
 
-We contribute **CUDA support to smolvm** (via a fork → upstream PRs) using
-**Driver-API remoting over vsock** — smolvm's existing communication channel.
-smol-portal is the **PorTAL orchestration layer** built on top of CUDA-enabled
-smolvm.
+smol-portal is the **PorTAL orchestration layer**: Python ML pipeline, Rust
+multi-GPU orchestrator, and worker Smolfiles/images. It depends on a
+CUDA-enabled smolvm build but does not own VMM, guest drivers, or GPU
+management code — that work lives in the [smolvm](https://github.com/smol-machines/smolvm) repo.
 
 **Guiding principle:** keep it simple (distributed-systems discipline). Every
 component should be independently testable, stateless where possible, and
 idempotent. Prefer boring, correct mechanisms over clever ones.
 
-## Architecture — "CUDA is just data"
-
-smolvm already has a guest↔host communication channel (vsock). CUDA operations
-are **another protocol on that wire**, like networking. The guest never talks
-to a GPU directly — it sends RPC requests over vsock; the host smolvm process
-executes them on the real NVIDIA GPU via `libcuda.so`.
-
-From the NVIDIA driver's perspective, each smolvm instance is just **another
-host process** — like a Chrome tab using GPU for video decode. The driver
-handles scheduling, memory management, and OOM (out-of-memory errors) natively.
-smolvm does not need to build its own GPU scheduler or VRAM accounting.
+## Architecture
 
 ```text
 ┌─ Guest VM ────────────────────────┐     ┌─ Host (smolvm process) ──────────┐
 │  PyTorch / PorTAL pipeline        │     │  smolvm-cuda server              │
-│    │                              │     │    │                             │
-│  CUDA shim (libcudart substitute) │     │  GpuBackend (dlopen libcuda.so) │
-│    │                              │     │    │                             │
-│  smolvm-cuda Client               │     │  Real NVIDIA driver → GPU HW    │
+│  CUDA shim (libcudart substitute) │     │  GpuBackend → NVIDIA driver      │
+│  smolvm-cuda Client               │     │                                  │
 │    └── vsock port 7000 ──────────────►──┘                                 │
-└───────────────────────────────────┘     └──────────────────────────────────┘
-                                                       ▲
-                                          Other smolvm VMs, Chrome, etc.
-                                          all share the GPU as host processes.
+└───────────────────────────────────┘
 ```
 
-### Why not ioctl forwarding (nvproxy / virtio-gpu-nv)?
-
-We initially planned to port gVisor's nvproxy (kernel-level ioctl forwarding
-with a guest kernel module and virtio device). After discussion with the smolvm
-author (@binsquare), we chose **API-level remoting** instead:
-
-- **Fits smolvm's architecture.** smolvm already remotes Vulkan (Venus) and
-  networking over virtio/vsock channels. CUDA is the same pattern.
-- **No guest kernel module.** No `virtio_gpu_nv.ko`, no SHM BAR, no nv-abi
-  ioctl struct port. The guest runs a thin userspace shim.
-- **No GPU management in the VMM.** The host NVIDIA driver handles scheduling,
-  OOM, and multi-process sharing. smolvm stays simple.
-- **Preserves smolvm properties.** Fast boot, fork/snapshot, elastic memory,
-  cross-platform host (macOS HVF + Linux KVM) all remain unchanged. GPU state
-  lives host-side and doesn't interfere.
-
-The tradeoff: the guest cannot run unmodified NVIDIA userland. It needs a
-**CUDA shim** that marshals calls over vsock. This is incremental work — add
-RPC methods as workloads need them — rather than a one-shot ioctl port.
-
-## Scope decisions (locked)
-
-- **smolvm fork → upstream PRs.** CUDA contributions target smol-machines/smolvm;
-  smol-portal depends on a CUDA-enabled smolvm build.
-- **Path A: Driver-API remoting over vsock.** Not ioctl forwarding (Path B).
-  Confirmed with @binsquare.
-- **Guest shim in-tree** (in the smolvm fork, `crates/smolvm-cuda-shim`),
-  kept small and focused. Split out if it grows complex.
-- **Multi-VM on one GPU: yes.** NVIDIA driver handles scheduling and OOM.
-  smolvm does not serialize CUDA RPCs between VMs.
-- **Device selection: TBD.** Either delegate to the NVIDIA scheduler (loose) or
-  pin a specific GPU per VM via Smolfile (strict, stronger guarantees). Pin is
-  preferred for PorTAL orchestration.
-- **Small, concise PRs.** One concern per PR; grow the protocol incrementally.
-
-## The two repos
-
-- **smolvm fork** (you/smolvm, `cuda-pytorch` branch): extend `smolvm-cuda`
-  protocol + host handlers, add guest CUDA shim, wire `cuda = true` in Smolfile,
-  e2e tests. Submit PRs upstream to smol-machines/smolvm.
-- **smol-portal** (this repo): PorTAL Python pipeline, Rust orchestrator,
-  worker Smolfiles/images. Depends on CUDA-enabled smolvm; does not own VMM,
-  guest drivers, or GPU management code.
+The PorTAL pipeline runs inside the guest VM. smol-portal packages it,
+defines artifact formats, and (in Phase C) fans out jobs across GPUs via
+`smolvm machine run --cuda`.
 
 ## Security model
 
@@ -92,76 +37,40 @@ RPC methods as workloads need them — rather than a one-shot ioctl port.
   any other host process. Guests sharing a GPU can see each other's impact on
   VRAM and compute scheduling (same as multiple programs on a desktop).
 - **Accepted trade-off:** sufficient for running your own PorTAL jobs; not a
-  multi-tenant GPU sandbox. The isolation boundary is the VM for CPU/memory/disk
-  and the host process boundary for GPU.
+  multi-tenant GPU sandbox.
 
 ## Repo structure (target)
 
 ```text
-you/smolvm (fork)                     smol-portal/ (this repo)
-├── crates/smolvm-cuda/                ├── ROADMAP.md
-│   ├── src/proto.rs   (extend)        ├── reference-material.md
-│   ├── src/host.rs    (extend)        ├── pipeline/
-│   ├── src/host/gpu.rs               │   └── portal/          # PorTAL Python
-│   └── src/client.rs  (extend)        ├── crates/
-├── crates/smolvm-cuda-shim/ (NEW)     │   └── portal-orchestrator/
-│   └── libcudart shim for guest       ├── images/
-├── crates/smolvm-cuda-guest/          │   └── portal-worker/   # OCI rootfs
-│   └── e2e test binary                ├── Smolfiles/
-├── crates/smolvm-smolfile/            │   └── portal-worker.toml
-│   └── cuda = true support            └── spikes/
-└── ...                                    └── phase0/
+smol-portal/
+├── ROADMAP.md
+├── reference-material.md
+├── pipeline/
+│   └── portal/              # PorTAL Python package (CLI + ML pipeline)
+├── crates/
+│   └── portal-orchestrator/ # Rust multi-GPU fan-out (Phase C)
+├── images/
+│   └── portal-worker/       # OCI rootfs (Phase B)
+├── Smolfiles/
+│   └── portal-worker.toml
+└── spikes/
 ```
 
 ## Phased plan
 
-Two tracks run in parallel. Track 1 (smolvm CUDA) is prerequisite for
-Track 2 Phase B, but Track 2 Phase A (bare-metal PorTAL) starts immediately.
+### Phase A — PorTAL pipeline, bare metal (weeks) — in progress
 
-### Track 1 — smolvm CUDA contributions (fork → PRs)
+Implement PorTAL: hypernetwork → base-agnostic task latent → slim converter →
+eval, single GPU, bare metal on Spark (reference: HypeLoRA + PEFT).
 
-#### Phase 0 — Validate existing smolvm-cuda on Spark (days)
-- Run `cargo run -p smolvm-cuda --example gpu_loopback` on DGX Spark (GB10).
-- Run `smolvm-cuda-guest` inside a smolvm VM → expect `SMOLVM-CUDA-OK`.
-- Bare-metal trace: run tiny LoRA finetune, capture which `cuda*` / `cu*` calls
-  PyTorch actually makes → this becomes the RPC backlog.
-- **DoD:** `SMOLVM-CUDA-OK` on GB10; CUDA API call list captured.
-- **Kill criterion:** if GB10's driver can't `dlopen` for `GpuBackend`, debug
-  before proceeding.
+Reproduce headline result: port Qwen3→Gemma-3 recovering ~94–98% of LoRA
+accuracy at ~half the calibration data on a small task.
 
-#### Phase 1 — Wire `cuda = true` in Smolfile (PR #1)
-- `cuda = true` in Smolfile → smolvm starts vsock CUDA server on VM boot.
-- Optional: `cuda_device = N` for GPU pinning.
-- **DoD:** `smolvm machine run --cuda ... -- echo ok` starts with CUDA channel.
+Freeze CLI contracts + artifact formats (latents, adapters, eval JSON).
 
-#### Phase 2 — Runtime API shim for PyTorch (PRs #2–4)
-- Add Runtime API RPC ops to `proto.rs` + `host.rs`: `cudaSetDevice`,
-  `cudaMalloc`, `cudaFree`, `cudaMemcpy`, `cudaLaunchKernel`, streams.
-- Guest shim (`crates/smolvm-cuda-shim`): `libcudart.so` replacement exporting
-  the symbols PyTorch needs, forwarding to `smolvm-cuda` Client over vsock.
-- **DoD:** `python -c "import torch; print(torch.cuda.is_available())"` → `True`
-  inside a smolvm guest.
+**DoD:** `portal port --from qwen3 --to gemma3 --task X` works end-to-end.
 
-#### Phase 3 — Training step in guest (PRs #5+)
-- Expand protocol as LoRA test hits missing symbols (cuBLAS, cuDNN paths).
-- **DoD:** 5-step LoRA finetune completes inside `smolvm machine run --cuda`.
-
-#### Phase 4 — Harden + upstream (ongoing)
-- Error handling, versioning, perf profiling.
-- Multi-GPU device routing.
-- Submit PRs to smol-machines/smolvm.
-
-### Track 2 — smol-portal (PorTAL product)
-
-#### Phase A — PorTAL pipeline, bare metal (weeks) — starts now
-- Implement PorTAL: hypernetwork → base-agnostic task latent → slim converter →
-  eval, single GPU, bare metal on Spark (reference: HypeLoRA + PEFT).
-- Reproduce headline result: port Qwen3→Gemma-3 recovering ~94–98% of LoRA
-  accuracy at ~half the calibration data on a small task.
-- Freeze CLI contracts + artifact formats (latents, adapters, eval JSON).
-- **DoD:** `portal port --from qwen3 --to gemma3 --task X` works end-to-end.
-
-##### Phase A implementation plan
+#### Implementation steps
 
 **Stack:** Python 3.11+, uv + pyproject.toml, typer CLI, HuggingFace
 (Transformers, PEFT, Datasets, Safetensors), PyTorch. Dev models: small
@@ -236,7 +145,10 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - Freeze CLI args, artifact formats, eval JSON schema.
 - Update this roadmap with results and any discovered constraints.
 
-#### Phase B — Single-VM integration (after Track 1 Phase 3)
+### Phase B — Single-VM integration (after smolvm CUDA is ready)
+
+Requires CUDA-enabled smolvm with PyTorch working inside a guest VM.
+
 - Package Phase A pipeline as OCI image / Smolfile with CUDA shims preinstalled.
 - Run full `converter-fit + eval` inside one CUDA-enabled smolvm VM.
 - ```bash
@@ -246,8 +158,9 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
   ```
 - **DoD:** Phase A result reproduced inside the VM within acceptable overhead.
 
-#### Phase C — Multi-GPU orchestration (weeks)
-- `portal-orchestrator` fans out N `convert+eval` jobs via
+### Phase C — Multi-GPU orchestration (weeks)
+
+- `portal-orchestrator` (Rust) fans out N `convert+eval` jobs via
   `smolvm machine run --cuda --cuda-device $GPU_ID`.
 - Stateless, idempotent, content-addressed artifacts, retryable jobs.
 - One job per GPU recommended; multi-VM same GPU works (NVIDIA driver
@@ -255,49 +168,32 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - **DoD:** "new base model dropped → one command ports every task across all
   local GPUs."
 
-## Collaboration
-
-- **@binsquare (smolvm author):** architecture confirmed (Path A, vsock RPC).
-  Reviews PRs. Consult on Smolfile `cuda` flag shape, device selection, guest
-  shim placement.
-- **nestrilabs/virtio-gpu-nv:** design reference only (we chose Path A, not
-  their ioctl-forwarding approach). May revisit if Path A hits fundamental
-  limits.
-- **gVisor nvproxy:** background reference for understanding NVIDIA driver
-  behavior, not a porting target.
-
 ## Design decisions log
 
 | Decision | Chosen | Alternative considered | Rationale |
 |---|---|---|---|
-| GPU approach | Path A: vsock API remoting | Path B: ioctl forwarding (nvproxy) | Fits smolvm architecture; no guest kernel module; Bin's preference |
-| GPU scheduling | Delegate to NVIDIA driver | Custom smolvm GPU scheduler | "NVIDIA is much better at scheduling and handling OOM" — Bin |
-| Multi-VM same GPU | Yes, process-level sharing | Hardware partitioning (MIG/SR-IOV) | Natural in Path A; Chrome tab analogy |
-| Guest shim | In-tree (smolvm repo) | Separate repo | Simpler if kept small; split later if needed |
-| Device selection | Pin OR delegate (TBD) | Always pin | Pinning gives stronger guarantees for orchestrator |
-| PR strategy | Small and concise | Large feature PRs | Bin's preference |
-| Repo split | smolvm fork + smol-portal | Single monorepo | smol-portal doesn't own VMM code |
+| ML stack | Python (PyTorch + PEFT) | Rust (tch-rs) | No viable Rust LoRA/PEFT ecosystem |
+| Orchestrator | Rust (`portal-orchestrator`) | Python subprocess | Native smolvm integration, typed VM control |
+| Repo split | smolvm + smol-portal | Single monorepo | smol-portal doesn't own VMM code |
+| Device selection | Pin per VM (TBD) | Delegate to NVIDIA scheduler | Pinning gives stronger guarantees for orchestrator |
+| Artifact storage | Content-addressed on disk | Database / object store | Simple, idempotent, independently testable |
 
 ## Risks & mitigations
 
 | Risk | Mitigation |
 |---|---|
-| API-remoting can't cover full PyTorch surface | Incremental: trace bare-metal calls, add RPC ops as needed |
-| Shim maintenance as CUDA versions evolve | Shim wraps Driver API (stable); Runtime API surface is smaller than ioctl ABI |
-| vsock latency on hot CUDA paths | Profile in Phase 3; batch small ops if needed |
-| Multi-VM OOM on shared GPU | NVIDIA driver returns clean errors; orchestrator pins one job per GPU |
 | PorTAL recipe unreproducible (no public code) | Phase A validates bare-metal before VM integration |
-| smolvm upstream rejects PRs | Fork works independently; keep PRs small to ease review |
-| GB10 / Blackwell / arm64 edge cases | Phase 0 validates on actual hardware before protocol work |
+| Converter accuracy below target | Iterate on hypernetwork/converter architecture; compare against direct LoRA baseline |
+| smolvm CUDA not ready for Phase B | Phase A runs on bare metal independently |
+| Multi-VM OOM on shared GPU | NVIDIA driver returns clean errors; orchestrator pins one job per GPU |
+| vsock latency on hot CUDA paths | Profile in Phase B; acceptable for training workloads |
 
 ## Immediate next steps
 
-1. **Fork smolvm** → `cuda-pytorch` branch.
-2. **Phase 0 on Spark:** run `gpu_loopback`, run `smolvm-cuda-guest` in VM,
-   capture bare-metal PyTorch CUDA API trace.
-3. **Phase A in parallel:** start PorTAL pipeline on bare metal.
-4. **First PR draft:** wire `cuda = true` in Smolfile → start vsock server.
+1. **Step 3:** Train source LoRA on a small HuggingFace dataset (Qwen3-0.5B).
+2. **Step 4–6:** Extract task latent, convert to target, eval.
+3. **Step 7–8:** Wire end-to-end `portal port` and validate headline result.
 
 ---
-_Status: planning. Architecture confirmed with smolvm author. No implementation
-yet. Update this spec as prototyping reveals new constraints._
+_Status: Phase A in progress (Steps 1–2 done). Update this spec as prototyping
+reveals new constraints._

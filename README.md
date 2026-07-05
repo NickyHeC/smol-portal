@@ -14,11 +14,11 @@ Learn a task once on a source model, extract a base-agnostic task latent, then p
 | 2 | Artifact formats (content-addressed) | Done |
 | 3–8 | Train → extract → convert → eval → end-to-end | In progress |
 
-VM integration (Phase B) and multi-GPU orchestration (Phase C) depend on CUDA support landing in smolvm. See [ROADMAP.md](ROADMAP.md) for the full plan.
+VM integration (Phase B) and multi-GPU orchestration (Phase C) depend on CUDA support in [smolvm](https://github.com/smol-machines/smolvm). See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## Architecture
 
-smol-portal is the **orchestration layer** on top of CUDA-enabled smolvm. It does not own VMM, guest drivers, or GPU management code — those live in the [smolvm fork](https://github.com/smol-machines/smolvm).
+smol-portal is the **orchestration layer** on top of CUDA-enabled smolvm. It does not own VMM, guest drivers, or GPU management code — those live in the [smolvm](https://github.com/smol-machines/smolvm) repo.
 
 ```text
 ┌─ Guest VM ────────────────────────┐     ┌─ Host (smolvm process) ──────────┐
@@ -29,12 +29,7 @@ smol-portal is the **orchestration layer** on top of CUDA-enabled smolvm. It doe
 └───────────────────────────────────┘
 ```
 
-**Two repos:**
-
-| Repo | Role |
-|------|------|
-| **smolvm** (fork → upstream PRs) | CUDA Driver-API remoting over vsock, guest shim, `cuda = true` in Smolfile |
-| **smol-portal** (this repo) | PorTAL Python pipeline, Rust orchestrator, worker Smolfiles/images |
+**Dependency:** requires a CUDA-enabled [smolvm](https://github.com/smol-machines/smolvm) build for Phase B+.
 
 ## PorTAL pipeline
 
