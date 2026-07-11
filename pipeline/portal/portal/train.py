@@ -37,11 +37,16 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        config.source_model,
-        torch_dtype=dtype,
-        trust_remote_code=True,
-    )
+    # Place weights on GPU incrementally (device_map) rather than a bulk
+    # model.to("cuda") — the latter copies ~GB in one shot and fails on the
+    # smolvm CUDA shim path ("CUDA error: unknown error").
+    load_kwargs: dict = {
+        "torch_dtype": dtype,
+        "trust_remote_code": True,
+    }
+    if device == "cuda":
+        load_kwargs["device_map"] = "cuda"
+    model = AutoModelForCausalLM.from_pretrained(config.source_model, **load_kwargs)
 
     peft_config = PeftLoraConfig(
         task_type=TaskType.CAUSAL_LM,
@@ -51,8 +56,6 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
         target_modules=config.lora.target_modules,
     )
     model = get_peft_model(model, peft_config)
-    if device == "cuda":
-        model = model.to(device)
 
     ds = load_dataset(config.dataset_name, split=config.dataset_split)
     if config.max_samples is not None:
