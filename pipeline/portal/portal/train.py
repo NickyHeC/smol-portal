@@ -28,6 +28,10 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
     """
     set_seed(config.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    # fp32 weights: bfloat16 model.to("cuda") fails on smolvm CUDA shim path
+    # (bf16 H2D / device placement). Training still runs fp32 activations here;
+    # flip to bf16 once the remoting stack validates bf16 model load.
+    dtype = torch.float32
 
     tokenizer = AutoTokenizer.from_pretrained(config.source_model, trust_remote_code=True)
     if tokenizer.pad_token is None:
@@ -35,7 +39,7 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
 
     model = AutoModelForCausalLM.from_pretrained(
         config.source_model,
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        torch_dtype=dtype,
         trust_remote_code=True,
     )
 
@@ -47,6 +51,8 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
         target_modules=config.lora.target_modules,
     )
     model = get_peft_model(model, peft_config)
+    if device == "cuda":
+        model = model.to(device)
 
     ds = load_dataset(config.dataset_name, split=config.dataset_split)
     if config.max_samples is not None:
@@ -70,7 +76,7 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
         num_train_epochs=config.num_epochs,
         per_device_train_batch_size=config.batch_size,
         learning_rate=config.learning_rate,
-        bf16=(device == "cuda"),
+        bf16=False,
         logging_steps=10,
         save_strategy="no",
         report_to="none",
