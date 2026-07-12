@@ -19,7 +19,8 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   - Wired into `train.py`, `converter.py`, `eval.py`, `hypernetwork.py`
   - `examples/smolvm/Dockerfile.portal-cuda`, `portal.smolfile`, `README.md`
 - **Worker recipe:** `--net --cuda --mem 16384`, `portal-cuda.tar`, env `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`, no `LD_PRELOAD`.
-- **Deferred:** Step 4 (`portal port` e2e) — same stack, validate after PR merge. smolvm upstream issues to file (see `~/Documents/smolvm-notes/cuda-build-plan.md`).
+- **Deferred:** Step 4 (`portal port` e2e) — same stack, validate after PR merge.
+- **smolvm upstream:** [#596](https://github.com/smol-machines/smolvm/issues/596) (release shims), [#597](https://github.com/smol-machines/smolvm/issues/597) (SDPA backward), [#598](https://github.com/smol-machines/smolvm/issues/598) (image layout docs).
 - **Lambda session:** closed; no further GPU host testing until Step 4 or upstream fixes.
 
 ## 2026-07-03 — Phase 0 proven: LoRA training works under gVisor nvproxy
