@@ -5,6 +5,23 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-12 — smolvm CUDA validation complete (Lambda A10)
+
+- **Goal:** run PorTAL LoRA training inside smolvm with `--cuda` on Lambda Cloud.
+- **Result:** Step 3 passed — `portal train` on `hf-internal-testing/tiny-random-LlamaForCausalLM`, 8/8 steps, adapter saved (~3 s).
+- **Stack:** smolvm 1.5.0 Linux tarball, manually built CUDA shims in `agent-rootfs`, `portal-cuda.tar` worker image (pip torch cu124 pre-baked).
+- **Root causes found:**
+  1. Release tarball ships without CUDA shims — must `cargo build` cudart/cuda shims and copy into `agent-rootfs/usr/local/lib/smolvm-cuda/`.
+  2. Auto-staging only overlays pip NVIDIA wheels at **image pull time** — conda `pytorch/pytorch` and runtime `pip install torch` miss cuBLAS interposition.
+  3. **Fused SDPA backward** (flash / mem-efficient attention) fails through remoted CUDA (`invalid argument`); **math SDPA works**. Matmul-only backward always worked.
+- **Code landed (PR #1, branch `feat/smolvm-cuda-backends`):**
+  - `portal/cuda.py` — `configure_cuda_for_smolvm()`, `causal_lm_load_kwargs()`
+  - Wired into `train.py`, `converter.py`, `eval.py`, `hypernetwork.py`
+  - `examples/smolvm/Dockerfile.portal-cuda`, `portal.smolfile`, `README.md`
+- **Worker recipe:** `--net --cuda --mem 16384`, `portal-cuda.tar`, env `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`, no `LD_PRELOAD`.
+- **Deferred:** Step 4 (`portal port` e2e) — same stack, validate after PR merge. smolvm upstream issues to file (see `~/Documents/smolvm-notes/cuda-build-plan.md`).
+- **Lambda session:** closed; no further GPU host testing until Step 4 or upstream fixes.
+
 ## 2026-07-03 — Phase 0 proven: LoRA training works under gVisor nvproxy
 
 - **Premise validated:** CUDA forward, backward, and optimizer steps all succeed

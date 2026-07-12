@@ -1,13 +1,19 @@
 # PorTAL worker on smolvm with CUDA remoting.
-# Build image: docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda .
-# Save for local use: docker save portal-cuda -o portal-cuda.tar
 #
-# smolvm release tarballs may ship without CUDA shims — build and copy them into
-# agent-rootfs/usr/local/lib/smolvm-cuda/ before first run (see examples/smolvm/README.md).
+# Prerequisites (host):
+#   1. portal-cuda.tar — docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda .
+#                        docker save portal-cuda -o portal-cuda.tar
+#   2. CUDA shims in smolvm agent-rootfs (release tarballs may omit them) — see README.md
+#   3. portal package with portal.cuda math-SDPA config (smol-portal main / PR #1)
+#
+# Usage:
+#   smolvm machine run --net --cuda --mem 16384 -s examples/smolvm/portal.smolfile -- \
+#     sh -c 'pip install portal ... && portal train --model ...'
 
 image = "./portal-cuda.tar"
 cuda = true
 net = true
+cpus = 4
 memory = 16384
 
 env = [

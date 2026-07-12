@@ -6,15 +6,22 @@ Learn a task once on a source model, extract a base-agnostic task latent, then p
 
 ## Status
 
-**Early development.** Phase A (bare-metal PorTAL pipeline) is in progress:
+**Early development.** Phase A (bare-metal PorTAL pipeline) is in progress. **smolvm CUDA
+validation (Lambda A10, 2026-07-12):** LoRA training via `portal train` works with the
+[`examples/smolvm/`](examples/smolvm/) worker image and `portal.cuda` backend config.
+See [memory.md](memory.md) and PR [#1](https://github.com/NickyHeC/smol-portal/pull/1).
 
 | Step | Description | Status |
 |------|-------------|--------|
 | 1 | Project scaffolding & CLI | Done |
 | 2 | Artifact formats (content-addressed) | Done |
 | 3–8 | Train → extract → convert → eval → end-to-end | In progress |
+| B1 | smolvm CUDA LoRA smoke (tiny Llama) | **Done** (Lambda) |
+| B2 | Smolfile + `portal-cuda` image | Done (PR #1) |
+| B3 | `portal port` e2e on smolvm | Not run yet |
 
-VM integration (Phase B) and multi-GPU orchestration (Phase C) depend on CUDA support in [smolvm](https://github.com/smol-machines/smolvm). See [ROADMAP.md](ROADMAP.md) for the full plan.
+VM integration details: [`examples/smolvm/README.md`](examples/smolvm/README.md). Multi-GPU
+(Phase C) not started. See [ROADMAP.md](ROADMAP.md).
 
 ## Architecture
 
