@@ -11,6 +11,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from portal.artifacts import load_adapter_path, save_eval_results
 from portal.config import EvalConfig
+from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
 
 
 def evaluate_adapter(
@@ -23,6 +24,7 @@ def evaluate_adapter(
     Returns the artifact directory containing eval results JSON.
     """
     set_seed(42)
+    configure_cuda_for_smolvm()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     tokenizer = AutoTokenizer.from_pretrained(config.model_name, trust_remote_code=True)
@@ -31,14 +33,12 @@ def evaluate_adapter(
 
     base_model = AutoModelForCausalLM.from_pretrained(
         config.model_name,
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-        trust_remote_code=True,
+        **causal_lm_load_kwargs(),
     )
 
     adapter_path = load_adapter_path(adapter_dir)
     model = PeftModel.from_pretrained(base_model, str(adapter_path))
     model.eval()
-    model.to(device)
 
     ds = load_dataset(config.dataset_name, split=config.dataset_split)
     if config.max_samples is not None:

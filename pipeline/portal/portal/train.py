@@ -19,6 +19,7 @@ from transformers import (
 
 from portal.artifacts import save_adapter
 from portal.config import TrainConfig
+from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
 
 
 def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
@@ -27,26 +28,16 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
     Returns the artifact directory containing the PEFT adapter.
     """
     set_seed(config.seed)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # fp32 weights: bfloat16 model.to("cuda") fails on smolvm CUDA shim path
-    # (bf16 H2D / device placement). Training still runs fp32 activations here;
-    # flip to bf16 once the remoting stack validates bf16 model load.
-    dtype = torch.float32
+    configure_cuda_for_smolvm()
 
     tokenizer = AutoTokenizer.from_pretrained(config.source_model, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Place weights on GPU incrementally (device_map) rather than a bulk
-    # model.to("cuda") — the latter copies ~GB in one shot and fails on the
-    # smolvm CUDA shim path ("CUDA error: unknown error").
-    load_kwargs: dict = {
-        "torch_dtype": dtype,
-        "trust_remote_code": True,
-    }
-    if device == "cuda":
-        load_kwargs["device_map"] = "cuda"
-    model = AutoModelForCausalLM.from_pretrained(config.source_model, **load_kwargs)
+    model = AutoModelForCausalLM.from_pretrained(
+        config.source_model,
+        **causal_lm_load_kwargs(),
+    )
 
     peft_config = PeftLoraConfig(
         task_type=TaskType.CAUSAL_LM,

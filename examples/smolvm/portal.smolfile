@@ -1,0 +1,22 @@
+# PorTAL worker on smolvm with CUDA remoting.
+# Build image: docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda .
+# Save for local use: docker save portal-cuda -o portal-cuda.tar
+#
+# smolvm release tarballs may ship without CUDA shims — build and copy them into
+# agent-rootfs/usr/local/lib/smolvm-cuda/ before first run (see examples/smolvm/README.md).
+
+image = "./portal-cuda.tar"
+cuda = true
+net = true
+memory = 16384
+
+env = [
+  "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False",
+  "HF_HOME=/tmp/hf",
+]
+
+[dev]
+volumes = ["./artifacts:/workspace/artifacts"]
+
+[secrets]
+HF_TOKEN = { from_env = "HF_TOKEN" }

@@ -21,6 +21,7 @@ from safetensors.torch import load_file
 
 from portal.artifacts import save_task_latent
 from portal.config import HypernetConfig, content_hash
+from portal.cuda import configure_cuda_for_smolvm
 
 
 class LoraAutoencoder(nn.Module):
@@ -81,6 +82,7 @@ def extract_task_latent(
     Returns the artifact directory containing the task latent.
     """
     torch.manual_seed(config.seed)
+    configure_cuda_for_smolvm()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     lora_weights = _flatten_lora_weights(adapter_dir)

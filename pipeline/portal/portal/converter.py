@@ -25,6 +25,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from portal.artifacts import load_task_latent, save_adapter
 from portal.config import ConverterConfig, content_hash
+from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
 
 
 class LatentToLoraConverter(nn.Module):
@@ -66,6 +67,7 @@ def convert_latent_to_adapter(
     Returns the artifact directory containing the target adapter.
     """
     set_seed(config.seed)
+    configure_cuda_for_smolvm()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     task_latent, latent_meta = load_task_latent(latent_dir)
@@ -81,8 +83,7 @@ def convert_latent_to_adapter(
 
     base_model = AutoModelForCausalLM.from_pretrained(
         config.target_model,
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-        trust_remote_code=True,
+        **causal_lm_load_kwargs(),
     )
 
     peft_config = PeftLoraConfig(
