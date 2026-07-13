@@ -13,7 +13,8 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **`portal port` e2e:** PASS — train → extract → convert → eval (`port e2e ok`), fused SDPA, smoke-sized config.
 - **#597:** commented + closed on upstream; PR [#603](https://github.com/smol-machines/smolvm/pull/603) closed as superseded.
 - **Fork:** `NickyHeC/smolvm` synced to upstream; `v1.5.2` tag pushed.
-- **Code:** `PORTAL_SKIP_CUDA_SMOLVM` in [smol-portal PR #2](https://github.com/NickyHeC/smol-portal/pull/2) — merge pending.
+- **Code:** `PORTAL_SKIP_CUDA_SMOLVM` merged to `main` via PR [#2](https://github.com/NickyHeC/smol-portal/pull/2) (2026-07-13).
+- **Next session:** real-model `portal port` on Lambda (qwen → gemma or similar).
 - **Docs:** `examples/smolvm/lambda-instructions.md` synced (full §5 recipes); `memory.md`, `README.md`, `ROADMAP.md`, `examples/smolvm/README.md` updated.
 
 ## 2026-07-13 — Lambda v1.5.2: #597 repro PASS; GitHub todos filed

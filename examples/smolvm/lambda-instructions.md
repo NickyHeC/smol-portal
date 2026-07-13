@@ -161,8 +161,8 @@ Slim image has no `git` — use GitHub zip, not `git+https://`:
 portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal
 ```
 
-**SDPA on smolvm v1.5.2+:** fused SDPA backward works. Default `portal.cuda` still forces
-math SDPA (safe). For fused path: `-e PORTAL_SKIP_CUDA_SMOLVM=1` after [smol-portal PR #2](https://github.com/NickyHeC/smol-portal/pull/2) merges, or use the inline `fused_only` patch in §5.
+**Fused SDPA on smolvm v1.5.2+:** pass `-e PORTAL_SKIP_CUDA_SMOLVM=1` on `machine run`
+(merged to smol-portal `main`, 2026-07-13). Default `portal.cuda` still forces math SDPA (safe).
 
 No `LD_PRELOAD` with `portal-cuda.tar`.
 
@@ -277,10 +277,8 @@ cd ~/smolvm-1.5.2-linux-x86_64
 
 ### 5b — Fused SDPA Trainer (no math workaround)
 
-After [smol-portal PR #2](https://github.com/NickyHeC/smol-portal/pull/2) merges, add
-`-e PORTAL_SKIP_CUDA_SMOLVM=1` to `machine run`.
-
-Until then, use inline patch:
+After merge to `main` (2026-07-13), add `-e PORTAL_SKIP_CUDA_SMOLVM=1` to `machine run`.
+Until a fresh Lambda box, inline patch below still works with older zip installs.
 
 ```bash
 cd ~/smolvm-1.5.2-linux-x86_64
