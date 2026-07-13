@@ -1,13 +1,12 @@
 # PorTAL on smolvm (CUDA)
 
 Development log and runbook for GPU training through smolvm's CUDA remoting stack.
-**Validated end-to-end on Lambda Cloud A10 (2026-07-13), including real-model
-Qwen3-0.6B → TinyLlama `portal port`.** See also `memory.md` (repo root)
-and `~/Documents/smolvm-notes/cuda-build-plan.md` (smolvm-side validation log).
+**Validated end-to-end on a cloud A10 (2026-07-13), including real-model
+Qwen3-0.6B → TinyLlama `portal port`.** See also `memory.md` (repo root).
 
-**Lambda quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap, CUDA
-verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. PEM at
-`~/Documents/PorTAL.pem`.
+**Cloud GPU quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap,
+CUDA verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. Replace
+`OWNER` with your `smol-portal` fork owner and use your own SSH key for the box.
 
 ## Summary
 
@@ -62,7 +61,7 @@ Inside a VM, `libcublas.so.12` under `site-packages/nvidia/` should be ~622 KB (
 not on the Lambda host (Ubuntu 3.10). Use the GitHub zip — slim image has no `git`:
 
 ```text
-portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal
+portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal
 ```
 
 ## Smolfile
@@ -88,7 +87,7 @@ smolvm machine run --net --cuda --mem 16384 \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
   --image ./portal-cuda.tar -- \
   sh -c 'pip install -q \
-    "portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
     typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
     "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
   portal train \
@@ -135,4 +134,4 @@ on v1.5.2 (2026-07-13).
 1. [#596](https://github.com/smol-machines/smolvm/issues/596) — release missing bundled shims (PR [#601](https://github.com/smol-machines/smolvm/pull/601))
 2. [#598](https://github.com/smol-machines/smolvm/issues/598) — image layout docs (PR [#600](https://github.com/smol-machines/smolvm/pull/600))
 
-Full notes: `~/Documents/smolvm-notes/cuda-build-plan.md`.
+See [`SPEC.md`](../../SPEC.md) and [`AGENTS.md`](../../AGENTS.md) for the full contract.
