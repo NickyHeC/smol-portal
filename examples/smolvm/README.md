@@ -4,7 +4,8 @@ Development log and runbook for GPU training through smolvm's CUDA remoting stac
 **Validated end-to-end on Lambda Cloud A10 (2026-07-13).** See also `memory.md` (repo root)
 and `~/Documents/smolvm-notes/cuda-build-plan.md` (smolvm-side validation log).
 
-**Lambda quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — PEM at
+**Lambda quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap, CUDA
+verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. PEM at
 `~/Documents/PorTAL.pem`.
 
 ## Summary

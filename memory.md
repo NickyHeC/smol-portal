@@ -13,8 +13,8 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **`portal port` e2e:** PASS — train → extract → convert → eval (`port e2e ok`), fused SDPA, smoke-sized config.
 - **#597:** commented + closed on upstream; PR [#603](https://github.com/smol-machines/smolvm/pull/603) closed as superseded.
 - **Fork:** `NickyHeC/smolvm` synced to upstream; `v1.5.2` tag pushed.
-- **Code ready (local):** `PORTAL_SKIP_CUDA_SMOLVM=1` in `portal/cuda.py` — push to `main` pending.
-- **Gotchas logged:** install portal inside VM (zip URL, not host pip); shim tag must match tarball; fork lacked `v1.5.2` tag caused false `cuda: False`.
+- **Code:** `PORTAL_SKIP_CUDA_SMOLVM` in [smol-portal PR #2](https://github.com/NickyHeC/smol-portal/pull/2) — merge pending.
+- **Docs:** `examples/smolvm/lambda-instructions.md` synced (full §5 recipes); `memory.md`, `README.md`, `ROADMAP.md`, `examples/smolvm/README.md` updated.
 
 ## 2026-07-13 — Lambda v1.5.2: #597 repro PASS; GitHub todos filed
 
@@ -105,7 +105,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **Target hardware:** NVIDIA GPUs, Linux x86_64, KVM.
 - **Tested on:** Lambda Cloud A10, driver 580.105.08, CUDA 13.0.
 - **DGX Spark:** available but user lacks sudo/docker group; use Lambda for now.
-- **Lambda SSH:** key is `~/Documents/PorTAL.pem`, user `ubuntu`, SSH config alias `lambda`. Runbook: `examples/smolvm/lambda-instructions.md`.
+- **Runbook:** `examples/smolvm/lambda-instructions.md` (synced from `~/Documents/smolvm-notes/`)
 - **gVisor install:** `runsc` at `/usr/local/bin/runsc`, runtime `runsc-gpu` with
   `--nvproxy=true --nvproxy-docker=true --platform=systrap --nvproxy-allowed-driver-capabilities=compute,utility,video`.
 - **Primary references:** gVisor `pkg/sentry/devices/nvproxy` (Go handlers),
