@@ -8,10 +8,13 @@ import os
 def configure_cuda_for_smolvm() -> None:
     """Apply backend settings validated on smolvm + CUDA shim.
 
-    smolvm's CUDA remoting does not support fused SDPA backward kernels yet;
-    flash/mem-efficient attention must be disabled so Llama training uses the
-    math SDPA path. Also disable cuDNN and PyTorch expandable segments (VMM)
-    until the host shim exposes the full surface.
+    By default, flash/mem-efficient SDPA are disabled so Llama training uses the
+    math SDPA path (needed on smolvm <1.5.2). Also disable cuDNN and PyTorch
+    expandable segments (VMM) until the host shim exposes the full surface.
+
+    Set ``PORTAL_SKIP_CUDA_SMOLVM=1`` to skip the SDPA overrides only (keep
+    alloc-conf + cuDNN tweaks). Validated on smolvm v1.5.2+ with fused SDPA
+    backward.
     """
     import torch
 
@@ -21,6 +24,10 @@ def configure_cuda_for_smolvm() -> None:
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:False")
 
     torch.backends.cudnn.enabled = False
+
+    if os.environ.get("PORTAL_SKIP_CUDA_SMOLVM") == "1":
+        return
+
     torch.backends.cuda.enable_flash_sdp(False)
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     torch.backends.cuda.enable_math_sdp(True)

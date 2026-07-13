@@ -102,11 +102,12 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - Output: PEFT adapter saved as content-addressed artifact.
 - **Validated 2026-07-12 on Lambda A10 via smolvm `--cuda`:** `portal train` on
   `hf-internal-testing/tiny-random-LlamaForCausalLM`, 8/8 steps, adapter written.
+  Re-validated on **smolvm v1.5.2** (2026-07-13) with fused SDPA optional.
   See [`examples/smolvm/README.md`](examples/smolvm/README.md) and `memory.md`.
 - **smolvm constraints discovered** (see Phase B notes + smolvm #596–#598):
   - fp32 weights + `device_map="cuda"` (bulk `model.to("cuda")` fails on shim).
-  - Must force **math SDPA** — fused flash/mem-efficient SDPA backward fails on
-    the CUDA remoting path. Handled by `portal.cuda.configure_cuda_for_smolvm()`.
+  - **Math SDPA** required on smolvm &lt;1.5.2; on **v1.5.2+** fused SDPA works
+    (`PORTAL_SKIP_CUDA_SMOLVM=1` or default workaround still safe).
 
 **Step 4 — Hypernetwork & task latent extraction (`portal extract`)**
 - LoRA autoencoder: flatten all LoRA weight matrices (A, B per layer) →
@@ -136,11 +137,11 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - Output: `eval_results.json` with loss, perplexity, sample count.
 - Target: recover ~94–98% of direct LoRA accuracy.
 
-**Step 7 — End-to-end `portal port` wiring**
+**Step 7 — End-to-end `portal port` wiring** ✅ (smolvm CUDA smoke, 2026-07-13)
 - Orchestrate: train → extract → convert → eval in one command.
 - `--skip-train` + `--source-adapter-dir` for reuse of existing source LoRA.
-- Verify idempotency: same inputs → same content-addressed artifacts.
-- All 4 steps print progress via rich console.
+- **Validated on Lambda A10 / smolvm v1.5.2:** full pipeline with tiny Llama,
+  fused SDPA, smoke-sized hypernet/converter epochs (`port e2e ok`).
 
 **Step 8 — Reproduce headline result & freeze**
 - Full pipeline: Qwen3-0.5B → Gemma-3-1B on chosen task.
@@ -153,12 +154,12 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 
 Requires CUDA-enabled smolvm with PyTorch working inside a guest VM.
 
-- ✅ **CUDA training smoke inside smolvm** (2026-07-12, Lambda A10): `portal train`
-  LoRA on tiny Llama completes through the `--cuda` remoting path.
+- ✅ **CUDA training smoke inside smolvm** (2026-07-12/13, Lambda A10): `portal train`
+  LoRA on tiny Llama completes through the `--cuda` remoting path (v1.5.2).
 - ✅ **Worker image + Smolfile checked in:** [`examples/smolvm/`](examples/smolvm/)
   (`Dockerfile.portal-cuda`, `portal.smolfile`, README with full run log).
-- ☐ Run full `port` (train → extract → convert → eval) inside one CUDA VM.
-- ☐ Reproduce a real headline result inside the VM.
+- ✅ **Full `portal port` e2e** (2026-07-13): train → extract → convert → eval on smolvm v1.5.2.
+- ☐ Reproduce a real headline result inside the VM (qwen → gemma scale).
 
 ```bash
 smolvm machine run --net --cuda --mem 16384 -s examples/smolvm/portal.smolfile \
@@ -175,7 +176,7 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 | smolvm issue | Symptom that blocked us | Our workaround |
 |---|---|---|
 | [#596](https://github.com/smol-machines/smolvm/issues/596) release ships `agent-rootfs` without CUDA shims | `torch.cuda.is_available()==False` (err 801) on stock v1.5.0 tarball | build shims from source, copy into `agent-rootfs/usr/local/lib/smolvm-cuda/` |
-| [#597](https://github.com/smol-machines/smolvm/issues/597) fused SDPA backward fails on the shim | `loss.backward()` → `CUDA error: invalid argument` | `portal.cuda.configure_cuda_for_smolvm()` forces math SDPA |
+| [#597](https://github.com/smol-machines/smolvm/issues/597) fused SDPA backward | `loss.backward()` → `CUDA error: invalid argument` on **v1.5.0** | **Fixed in v1.5.2** (issue closed). Math SDPA workaround still default in `portal.cuda`; use `PORTAL_SKIP_CUDA_SMOLVM=1` on 1.5.2+ |
 | [#598](https://github.com/smol-machines/smolvm/issues/598) auto-staging is pull-time + `site-packages/nvidia/`-only, undocumented | conda / runtime-`pip install torch` images silently loaded real 109 MB cuBLAS | pre-bake pip torch into `portal-cuda.tar` so wheels exist at pull time |
 
 ### Phase C — Multi-GPU orchestration (weeks)
@@ -210,13 +211,10 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 
 ## Immediate next steps
 
-1. **Step 4–6:** Extract task latent, convert to target, eval (bare metal + smolvm).
-2. **Step 7:** Wire/validate end-to-end `portal port` inside a single CUDA VM (Phase B).
-3. **Step 8:** Reproduce headline result and freeze contracts.
-4. **Upstream tracking:** watch smolvm #596–#598; drop the `portal.cuda` /
-   pre-baked-image workarounds as each fix lands.
+1. **Step 8:** Reproduce headline result (Qwen → Gemma) on bare metal and inside smolvm VM.
+2. **Upstream tracking:** smolvm #596 / #598 — drop manual shim install and pre-baked-image docs when PRs land.
+3. **Push** `PORTAL_SKIP_CUDA_SMOLVM` to smol-portal `main`.
 
 ---
-_Status: Phase A Steps 1–3 done (Step 3 validated on smolvm CUDA, 2026-07-12).
-Phase B in progress — single-VM CUDA training smoke passes; `port` e2e pending.
-Update this spec as prototyping reveals new constraints._
+_Status: Phase A Steps 1–7 done on smolvm CUDA (v1.5.2, 2026-07-13). Phase B single-VM
+`portal port` e2e passes. Next: real-model headline + multi-GPU orchestration (Phase C)._
