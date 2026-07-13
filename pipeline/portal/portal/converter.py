@@ -21,6 +21,7 @@ import torch.nn as nn
 from datasets import load_dataset
 from peft import LoraConfig as PeftLoraConfig
 from peft import TaskType, get_peft_model
+from torch.func import functional_call
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from portal.artifacts import load_task_latent, save_adapter
@@ -117,20 +118,23 @@ def convert_latent_to_adapter(
     optimizer = torch.optim.Adam(converter.parameters(), lr=config.learning_rate)
 
     converter.train()
+    batch = _collate_batch(ds, batch_size=min(4, len(ds)), device=device)
     for epoch in range(config.num_epochs):
         predicted_weights = converter(task_latent).squeeze(0)
 
-        # Inject predicted weights into the LoRA parameters
+        # Map predicted weights to the LoRA parameter names, keeping them in the
+        # autograd graph. `functional_call` runs the forward pass with these
+        # tensors substituted for the model's own parameters, so gradients flow
+        # back to the converter. Assigning to `param.data` (the previous
+        # approach) detaches the graph and the converter never learns.
+        overrides = {}
         offset = 0
         for name, shape in lora_shapes:
             numel = shape.numel()
-            param_data = predicted_weights[offset : offset + numel].reshape(shape)
-            _set_param_by_name(peft_model, name, param_data)
+            overrides[name] = predicted_weights[offset : offset + numel].reshape(shape)
             offset += numel
 
-        # Compute calibration loss over a mini-batch
-        batch = _collate_batch(ds, batch_size=min(4, len(ds)), device=device)
-        outputs = peft_model(**batch)
+        outputs = functional_call(peft_model, overrides, args=(), kwargs=batch)
         loss = outputs.loss
 
         optimizer.zero_grad()
@@ -177,5 +181,10 @@ def _collate_batch(ds, batch_size: int, device: str) -> dict[str, torch.Tensor]:
     for key in ds[0].keys():
         tensors = [ds[i][key] for i in indices]
         batch[key] = torch.stack(tensors).to(device)
-    batch["labels"] = batch["input_ids"].clone()
+    labels = batch["input_ids"].clone()
+    # Don't score padding: pad_token == eos_token here, so unmasked pads would
+    # dominate the loss with meaningless targets.
+    if "attention_mask" in batch:
+        labels[batch["attention_mask"] == 0] = -100
+    batch["labels"] = labels
     return batch

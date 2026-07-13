@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
 
 

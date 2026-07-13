@@ -7,8 +7,8 @@ Learn a task once on a source model, extract a base-agnostic task latent, then p
 ## Status
 
 **smolvm CUDA validation (Lambda A10, 2026-07-13):** LoRA training and full `portal port`
-e2e work on smolvm **v1.5.2** with the [`examples/smolvm/`](examples/smolvm/) worker image.
-See [memory.md](memory.md).
+e2e on **real models** (Qwen3-0.6B → TinyLlama) inside smolvm **v1.5.2** with the
+[`examples/smolvm/`](examples/smolvm/) worker image. See [memory.md](memory.md).
 
 | Step | Description | Status |
 |------|-------------|--------|
@@ -17,7 +17,7 @@ See [memory.md](memory.md).
 | 3–8 | Train → extract → convert → eval → end-to-end | In progress |
 | B1 | smolvm CUDA LoRA smoke (tiny Llama) | **Done** (Lambda, v1.5.2) |
 | B2 | Smolfile + `portal-cuda` image | Done (PR #1) |
-| B3 | `portal port` e2e on smolvm | **Done** (Lambda, v1.5.2, fused SDPA) |
+| B3 | `portal port` e2e on smolvm | **Done** (Lambda, v1.5.2; real models 2026-07-13) |
 
 VM integration details: [`examples/smolvm/README.md`](examples/smolvm/README.md). Multi-GPU
 (Phase C) not started. See [ROADMAP.md](ROADMAP.md).
@@ -108,6 +108,8 @@ Same config → same hash → idempotent reruns.
 
 ## References
 
+- [SPEC.md](SPEC.md) — human-readable contract: pipeline, CLI, config, artifacts, smolvm integration
+- [AGENTS.md](AGENTS.md) — playbook for a coding agent driving PorTAL for a user
 - [ROADMAP.md](ROADMAP.md) — phased plan, architecture decisions, risks
 - [reference-material.md](reference-material.md) — smolvm-cuda, CUDA APIs, HypeLoRA, PEFT reading list
 - [smolvm](https://github.com/smol-machines/smolvm) — microVM runtime

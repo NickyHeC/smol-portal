@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import torch
 from datasets import load_dataset
 from peft import LoraConfig as PeftLoraConfig
 from peft import TaskType, get_peft_model

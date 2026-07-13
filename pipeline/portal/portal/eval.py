@@ -27,6 +27,14 @@ def evaluate_adapter(
     configure_cuda_for_smolvm()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Eval is forward-only, so the fused-SDPA backward concern (#597) doesn't
+    # apply. Pin the math SDPA backend regardless of PORTAL_SKIP_CUDA_SMOLVM so
+    # the reported metric is reproducible and independent of the training flag.
+    if torch.cuda.is_available():
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+
     tokenizer = AutoTokenizer.from_pretrained(config.model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -66,10 +74,14 @@ def evaluate_adapter(
             batch = _collate_slice(ds, start, end, device)
             outputs = model(**batch)
 
-            mask = batch["attention_mask"]
-            tokens_in_batch = mask.sum().item()
-            total_loss += outputs.loss.item() * tokens_in_batch
-            total_tokens += tokens_in_batch
+            # Weight each batch's mean loss by the number of tokens it actually
+            # scored (labels != -100), matching the loss denominator so the
+            # aggregate is a true token-level average.
+            scored_tokens = (batch["labels"] != -100).sum().item()
+            if scored_tokens == 0:
+                continue
+            total_loss += outputs.loss.item() * scored_tokens
+            total_tokens += scored_tokens
             num_batches += 1
 
     avg_loss = total_loss / max(total_tokens, 1)
@@ -105,5 +117,10 @@ def _collate_slice(ds, start: int, end: int, device: str) -> dict[str, torch.Ten
     for key in ds[0].keys():
         tensors = [ds[i][key] for i in range(start, end)]
         batch[key] = torch.stack(tensors).to(device)
-    batch["labels"] = batch["input_ids"].clone()
+    labels = batch["input_ids"].clone()
+    # Ignore padding in the loss: pad_token == eos_token, so unmasked pads would
+    # score meaningless targets and corrupt perplexity.
+    if "attention_mask" in batch:
+        labels[batch["attention_mask"] == 0] = -100
+    batch["labels"] = labels
     return batch
