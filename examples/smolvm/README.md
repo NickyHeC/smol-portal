@@ -1,7 +1,8 @@
 # PorTAL on smolvm (CUDA)
 
 Development log and runbook for GPU training through smolvm's CUDA remoting stack.
-**Validated end-to-end on Lambda Cloud A10 (2026-07-13).** See also `memory.md` (repo root)
+**Validated end-to-end on Lambda Cloud A10 (2026-07-13), including real-model
+Qwen3-0.6B → TinyLlama `portal port`.** See also `memory.md` (repo root)
 and `~/Documents/smolvm-notes/cuda-build-plan.md` (smolvm-side validation log).
 
 **Lambda quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap, CUDA
@@ -15,8 +16,9 @@ verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. PEM a
 | **Minimum smolvm** | **v1.5.2** Linux x86_64 + shims built from matching upstream git tag |
 | GPU host | Lambda `gpu_1x_a10`, driver 580.x, `/dev/kvm` |
 | Worker image | `portal-cuda.tar` (this Dockerfile) |
-| `portal train` | ✅ LoRA smoke (math or fused SDPA on v1.5.2) |
-| `portal port` e2e | ✅ train → extract → convert → eval (fused SDPA, smoke config) |
+| `portal train` | ✅ smoke + **Qwen3-0.6B** real (math SDPA) |
+| `portal port` e2e | ✅ **Qwen → TinyLlama** (`port e2e ok`); Gemma needs `HF_TOKEN` |
+| Fused SDPA (real models) | ✅ train + **full port e2e** (`PORTAL_SKIP_CUDA_SMOLVM=1`) |
 | PorTAL CUDA config | `portal.cuda.configure_cuda_for_smolvm()` — math SDPA default; `PORTAL_SKIP_CUDA_SMOLVM=1` for fused SDPA on smolvm ≥1.5.2 |
 
 ## Why a custom image?
@@ -100,6 +102,23 @@ smolvm machine run --net --cuda --mem 16384 \
 
 **Fused SDPA on smolvm v1.5.2+:** pass `-e PORTAL_SKIP_CUDA_SMOLVM=1` (after that env gate
 lands on `main`) or use the inline `fused_only` patch from `cuda-build-plan.md`.
+
+## Full port e2e (reference driver)
+
+[`port_e2e.py`](port_e2e.py) runs `train → extract → convert → eval` with the
+smoke-sizing knobs `portal port` does not yet expose. Install portal in the VM,
+then run it (see the script header for the full `machine run` wrapper):
+
+```bash
+python3 examples/smolvm/port_e2e.py \
+  --source Qwen/Qwen3-0.6B \
+  --target TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --task my-task --dataset stanfordnlp/imdb \
+  --max-samples 64 --max-seq-length 128
+```
+
+For agent-driven use and the full contract, see [`AGENTS.md`](../../AGENTS.md)
+and [`SPEC.md`](../../SPEC.md).
 
 ## SDPA / #597 history
 
