@@ -5,6 +5,21 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-13 (Lambda, ~1 h) — Real-model PorTAL on smolvm v1.5.2
+
+- **Stack:** smolvm **v1.5.2** tarball + upstream `v1.5.2` shims, `portal-cuda.tar` (built on Lambda), A10.
+- **Runbook:** `lambda-instructions.md` bootstrap + §4/§5 — session much faster than prior days.
+- **CUDA gates (§4):** all PASS — `cuda: True`, `libcudart.so.12` shim 887616 B, vsock, `gpu_loopback` A10.
+- **`portal train` smoke:** PASS tiny-random Llama 8/8 @ ~3.2 it/s (math SDPA).
+- **`portal train` real:** PASS **Qwen/Qwen3-0.6B** on IMDB (64 samples, 1 epoch) @ ~6.6–7.5 it/s.
+- **`portal port` e2e real:** PASS **Qwen3-0.6B → TinyLlama/TinyLlama-1.1B-Chat-v1.0** (`port e2e ok`, math SDPA). `google/gemma-3-1b-it` blocked (gated repo, 401).
+- **Fused SDPA real:** PASS Qwen train @ ~7.65 it/s; PASS full **`portal port` e2e** (`port e2e ok (fused SDPA)`).
+- **Metrics anomaly → root-caused:** fused eval `loss=0.0 ppl=1.0` / math `ppl=89385` traced to (1) converter never trained — predicted LoRA weights injected via `param.data.copy_(detach())` broke autograd (flat calib loss `12.3736`), and (2) eval scored pad tokens + toggled SDPA backend. Confirmed on Lambda: `converter.grad after injected-path backward: None`.
+- **Fix (branch `fix/converter-autograd-eval-metrics`, pushed):** converter uses `torch.func.functional_call` (grads reach the MLP); eval masks pads (`labels=-100`), pins math SDPA, weights loss by scored tokens; +2 regression tests; ruff/pytest green (11 pass).
+- **Fix validated on Lambda (v1.5.2, A10):** converter loss now **descends** `11.82→9.39→8.37→7.79`; eval **`ppl=4169`** (finite, sane). `port e2e ok (fixed)`.
+- **Docs added (same branch):** `SPEC.md`, `AGENTS.md`, de-anonymized `examples/smolvm/port_e2e.py` reference driver; personal Lambda copy in `smolvm-notes/port_e2e_lambda.py`.
+- **Next:** open PR for the fix branch; de-anonymize existing `examples/smolvm/` personal refs; Gemma target with `HF_TOKEN`; scale samples/epochs for real accuracy; land smolvm PRs #600–#602.
+
 ## 2026-07-13 (evening) — Lambda session complete: full PorTAL e2e on smolvm v1.5.2
 
 - **Stack:** smolvm **v1.5.2** tarball + upstream `v1.5.2` shims, `portal-cuda.tar`, Lambda A10.

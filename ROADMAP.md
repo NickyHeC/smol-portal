@@ -159,7 +159,7 @@ Requires CUDA-enabled smolvm with PyTorch working inside a guest VM.
 - ✅ **Worker image + Smolfile checked in:** [`examples/smolvm/`](examples/smolvm/)
   (`Dockerfile.portal-cuda`, `portal.smolfile`, README with full run log).
 - ✅ **Full `portal port` e2e** (2026-07-13): train → extract → convert → eval on smolvm v1.5.2.
-- ☐ Reproduce a real headline result inside the VM (qwen → gemma scale).
+- ✅ **Real-model `portal port` inside VM** (2026-07-13, ~1 h): Qwen3-0.6B → TinyLlama-1.1B on IMDB (`port e2e ok`). Gemma-3 gated — retry with `HF_TOKEN`.
 
 ```bash
 smolvm machine run --net --cuda --mem 16384 -s examples/smolvm/portal.smolfile \
@@ -211,10 +211,10 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 
 ## Immediate next steps
 
-1. **Step 8:** Reproduce headline result (Qwen → Gemma) on bare metal and inside smolvm VM.
+1. **Step 8:** Scale Qwen → target (Gemma with `HF_TOKEN` or TinyLlama) for accuracy, not just pipeline smoke.
 2. **Upstream tracking:** smolvm #596 / #598 — drop manual shim install and pre-baked-image docs when PRs land.
-3. **Push** `PORTAL_SKIP_CUDA_SMOLVM` to smol-portal `main`.
+3. ~~**Fused SDPA** on real models~~ **Done** on Lambda (2026-07-13).
 
 ---
-_Status: Phase A Steps 1–7 done on smolvm CUDA (v1.5.2, 2026-07-13). Phase B single-VM
-`portal port` e2e passes. Next: real-model headline + multi-GPU orchestration (Phase C)._
+_Status: Phase B complete on smolvm v1.5.2 — real-model `portal port` + fused SDPA e2e (2026-07-13).
+Next: Gemma with HF auth, accuracy scaling, multi-GPU orchestration (Phase C)._

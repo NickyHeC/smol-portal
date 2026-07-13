@@ -1,25 +1,27 @@
-# Lambda Cloud — quick startup (PorTAL / smolvm CUDA)
+# Cloud GPU — quick startup (PorTAL / smolvm CUDA)
 
-**Assume a bare instance every time.** Terminating a Lambda box wipes home disk —
+Generic runbook for a bare cloud NVIDIA box (validated on Lambda A10). Before
+using, replace `OWNER` with your `smol-portal` fork owner and point the SSH key
+paths at your own key.
+
+**Assume a bare instance every time.** Terminating a cloud box wipes the home disk —
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-13 — full PorTAL e2e on smolvm **v1.5.2** (Lambda A10).
+**Last validated:** 2026-07-13 — real-model PorTAL + fused SDPA full `portal port` e2e on smolvm **v1.5.2** (cloud A10, ~1 h).
 
 | Resource | Path |
 |----------|------|
-| PEM key | `~/Documents/PorTAL.pem` |
-| Session log (smolvm) | `~/Documents/smolvm-notes/cuda-build-plan.md` |
+| SSH key | `~/.ssh/gpu-box.pem` (use your own) |
 | Session log (PorTAL) | `smol-portal/memory.md` |
-| GitHub todos | `~/Documents/smolvm-notes/github-action-items.md` |
 
 ---
 
 ## 0. From your Mac — SSH in
 
 ```bash
-chmod 400 ~/Documents/PorTAL.pem
-ssh -i ~/Documents/PorTAL.pem ubuntu@<INSTANCE_IP>
+chmod 400 ~/.ssh/gpu-box.pem
+ssh -i ~/.ssh/gpu-box.pem ubuntu@<INSTANCE_IP>
 ```
 
 Optional `~/.ssh/config` (update IP each launch):
@@ -28,7 +30,7 @@ Optional `~/.ssh/config` (update IP each launch):
 Host lambda
   HostName <INSTANCE_IP>
   User ubuntu
-  IdentityFile ~/Documents/PorTAL.pem
+  IdentityFile ~/.ssh/gpu-box.pem
   IdentitiesOnly yes
 ```
 
@@ -73,17 +75,15 @@ tar xzf smolvm.tar.gz
 # **Shim version MUST match the release tarball** (v1.5.2 shims + v1.5.2 binary).
 # Mismatch → cuda: False with staging OK and cuda.sock present (protocol skew).
 
-git clone https://github.com/NickyHeC/smolvm.git ~/smolvm
+git clone https://github.com/smol-machines/smolvm.git ~/smolvm
 cd ~/smolvm
-# Fork may lack release tags — always fetch from upstream smol-machines:
-git remote add upstream https://github.com/smol-machines/smolvm.git 2>/dev/null || true
-git fetch upstream --tags
+git fetch --tags
 
 git checkout v${VER}
 git log -1 --oneline   # must show the v${VER} commit, not an old branch
 
-# Lambda has no git identity by default — for cherry-pick/merge use:
-#   git -c user.email="lambda@local" -c user.name="lambda" ...
+# A bare box has no git identity by default — for cherry-pick/merge use:
+#   git -c user.email="you@local" -c user.name="you" ...
 
 source "$HOME/.cargo/env"
 cargo build --release -p smolvm-cudart-shim -p smolvm-cuda-shim
@@ -97,7 +97,7 @@ cp target/release/libcuda.so  "$SHIM_DIR/libcuda.so.1"
 ls -la "$SHIM_DIR"
 
 # --- Worker image (portal-cuda.tar) ---
-git clone https://github.com/NickyHeC/smol-portal.git ~/smol-portal
+git clone https://github.com/OWNER/smol-portal.git ~/smol-portal
 cd ~/smol-portal
 sudo docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda .
 sudo docker save portal-cuda -o ~/portal-cuda.tar
@@ -124,7 +124,7 @@ sudo chown "$USER:$USER" ~/portal-cuda.tar
 
 ```bash
 # Mac:
-scp -i ~/Documents/PorTAL.pem ~/path/to/portal-cuda.tar ubuntu@<IP>:~/portal-cuda.tar
+scp -i ~/.ssh/gpu-box.pem ~/path/to/portal-cuda.tar ubuntu@<IP>:~/portal-cuda.tar
 
 # Lambda:
 ls -lh ~/portal-cuda.tar
@@ -138,7 +138,7 @@ Still run smolvm tarball + shim build on the bare box (quick).
 
 | Step | Verify |
 |------|--------|
-| SSH | `ssh -i ~/Documents/PorTAL.pem ubuntu@<IP>` |
+| SSH | `ssh -i ~/.ssh/gpu-box.pem ubuntu@<IP>` |
 | KVM + GPU | `ls -l /dev/kvm && nvidia-smi` |
 | smolvm | `~/smolvm-1.5.2-linux-x86_64/smolvm --version` |
 | Shims | `ls ~/smolvm-1.5.2-linux-x86_64/agent-rootfs/usr/local/lib/smolvm-cuda/` → two `.so` files |
@@ -158,7 +158,7 @@ Still run smolvm tarball + shim build on the bare box (quick).
 Slim image has no `git` — use GitHub zip, not `git+https://`:
 
 ```text
-portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal
+portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal
 ```
 
 **Fused SDPA on smolvm v1.5.2+:** pass `-e PORTAL_SKIP_CUDA_SMOLVM=1` on `machine run`
@@ -225,7 +225,7 @@ If this fails, fix host driver before debugging guest/shim.
 | Shim tag vs tarball | `git describe --tags` must match tarball version |
 | Rebuild actually ran | `cargo build` ~10s+, not 0.07s |
 | Shim size | `libcudart-shim.so` ≈ 887616 bytes (v1.5.2) |
-| Fork tags | `git fetch upstream --tags` if `v1.5.2` missing on NickyHeC fork |
+| Fork tags | `git fetch --tags` if `v1.5.2` missing on your fork |
 
 ### Persistent debug machine (logs survive)
 
@@ -261,7 +261,7 @@ cd ~/smolvm-1.5.2-linux-x86_64
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
   --image ~/portal-cuda.tar -- \
   sh -c 'pip install -q \
-    "portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
     typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
     "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
   portal train \
@@ -288,7 +288,7 @@ cd ~/smolvm-1.5.2-linux-x86_64
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
   --image ~/portal-cuda.tar -- \
   sh -c 'pip install -q \
-    "portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
     typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
     "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
   python3 - <<'"'"'PY'"'"'
@@ -338,7 +338,7 @@ cd ~/smolvm-1.5.2-linux-x86_64
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
   --image ~/portal-cuda.tar -- \
   sh -c 'pip install -q \
-    "portal @ https://github.com/NickyHeC/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
     typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
     "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
   python3 - <<'"'"'PY'"'"'
@@ -429,6 +429,93 @@ print(\"backward ok\")
 
 **Note:** [#597](https://github.com/smol-machines/smolvm/issues/597) **passes on v1.5.2** (closed 2026-07-13). Failed on v1.5.0.
 
+### 5e — Real-model `portal train` (Qwen3-0.6B, math SDPA)
+
+**Validated 2026-07-13 (~10 s, 64 steps @ ~7 it/s).**
+
+```bash
+cd ~/smolvm-1.5.2-linux-x86_64
+
+./smolvm machine run --net --cuda --mem 16384 \
+  -e HF_HOME=/tmp/hf \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+  --image ~/portal-cuda.tar -- \
+  sh -c 'pip install -q \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
+    "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
+  portal train \
+    --model Qwen/Qwen3-0.6B \
+    --task imdb-qwen-real \
+    --dataset stanfordnlp/imdb \
+    --max-samples 64 --epochs 1 --batch-size 1 \
+    --max-seq-length 128 --rank 8 \
+    --output-dir /tmp/artifacts'
+```
+
+### 5f — Real-model `portal port` e2e (Qwen → TinyLlama)
+
+**Validated 2026-07-13 (`port e2e ok`).** Use TinyLlama (ungated). For Gemma-3, add
+`-e HF_TOKEN=...` and accept the HF license first.
+
+```bash
+cd ~/smolvm-1.5.2-linux-x86_64
+
+./smolvm machine run --net --cuda --mem 16384 \
+  -e HF_HOME=/tmp/hf \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+  --image ~/portal-cuda.tar -- \
+  sh -c 'pip install -q \
+    "portal @ https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal" \
+    typer rich pydantic safetensors "datasets>=3.0,<4" accelerate \
+    "transformers>=4.45,<4.52" "peft>=0.14,<0.18" && \
+  python3 - <<'"'"'PY'"'"'
+import portal.train as pt
+import portal.hypernetwork as ph
+import portal.converter as pconv
+import portal.eval as pe
+from pathlib import Path
+from portal.artifacts import load_adapter_path
+from portal.config import TrainConfig, HypernetConfig, ConverterConfig, EvalConfig, LoraConfig
+
+SOURCE = "Qwen/Qwen3-0.6B"
+TARGET = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+TASK = "imdb-port-real"
+DS = "stanfordnlp/imdb"
+OUT = Path("/tmp/port-artifacts")
+
+adapter_artifact = pt.train_source_lora(
+    TrainConfig(source_model=SOURCE, task_name=TASK, dataset_name=DS,
+                max_samples=64, num_epochs=1, batch_size=1, max_seq_length=128,
+                lora=LoraConfig(rank=8, alpha=16)), OUT)
+latent_dir = ph.extract_task_latent(
+    load_adapter_path(adapter_artifact), SOURCE, TASK,
+    HypernetConfig(num_epochs=10, latent_dim=64, hidden_dim=128, num_layers=2), OUT)
+target_adapter = pconv.convert_latent_to_adapter(
+    latent_dir, TASK,
+    ConverterConfig(target_model=TARGET, calibration_dataset=DS,
+                    calibration_samples=64, num_epochs=5, hidden_dim=128),
+    OUT, lora_rank=8)
+pe.evaluate_adapter(target_adapter,
+    EvalConfig(model_name=TARGET, task_name=TASK, dataset_name=DS,
+               dataset_split="test", max_samples=64, batch_size=1, max_seq_length=128), OUT)
+print("port e2e ok")
+PY'
+```
+
+### 5g — Fused SDPA on real models
+
+Add `-e PORTAL_SKIP_CUDA_SMOLVM=1` (smolvm ≥1.5.2). **Train validated 2026-07-13** (Qwen3-0.6B, ~7.65 it/s). **Full port e2e validated**
+(Qwen → TinyLlama, `port e2e ok (fused SDPA)`).
+
+```bash
+  -e PORTAL_SKIP_CUDA_SMOLVM=1 \
+```
+
+**Success:** train completes without `CUDA error: invalid argument` on backward.
+
+**Full port e2e (fused SDPA):** §5f + `PORTAL_SKIP_CUDA_SMOLVM=1`, use `TASK=imdb-port-fused`.
+
 ---
 
 ## 6. Known issues & workarounds
@@ -443,6 +530,7 @@ print(\"backward ok\")
 | Slim image no `git` | pip `git+https://` fails | Use GitHub `archive/.../main.zip#subdirectory=...` |
 | Docker permission denied | `permission denied` on docker socket | `sudo docker` or `usermod -aG docker` + re-login |
 | Ephemeral log grep empty | no `agent-startup-error.log` after run | VM dir deleted on exit — use `sleep` trick or persistent machine (§4D) |
+| Gated HF models (Gemma-3) | 401 on `config.json` | Accept license on HF; `-e HF_TOKEN=hf_...` on `machine run`, or use ungated target (§5f) |
 
 ---
 
@@ -450,10 +538,10 @@ print(\"backward ok\")
 
 ```bash
 # Mac → Lambda (cached portal-cuda.tar)
-scp -i ~/Documents/PorTAL.pem ./portal-cuda.tar ubuntu@<IP>:~/
+scp -i ~/.ssh/gpu-box.pem ./portal-cuda.tar ubuntu@<IP>:~/
 
 # Lambda → Mac (logs / artifacts)
-scp -i ~/Documents/PorTAL.pem ubuntu@<IP>:/tmp/port-artifacts/ ./port-artifacts/
+scp -i ~/.ssh/gpu-box.pem ubuntu@<IP>:/tmp/port-artifacts/ ./port-artifacts/
 ```
 
 ---
