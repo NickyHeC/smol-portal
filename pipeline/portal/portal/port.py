@@ -54,7 +54,7 @@ def run_port_pipeline(
         adapter_dir=adapter_path,
         source_model=config.source_model,
         task_name=config.task_name,
-        config=config.hypernet,
+        config=config.build_hypernet_config(),
         output_dir=config.output_dir,
     )
     console.print(f"  → {latent_dir}")
@@ -67,6 +67,7 @@ def run_port_pipeline(
         task_name=config.task_name,
         config=converter_cfg,
         output_dir=config.output_dir,
+        lora_rank=config.lora_rank,
     )
     console.print(f"  → {target_adapter_dir}")
 

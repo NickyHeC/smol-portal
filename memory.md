@@ -5,6 +5,27 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-14 (later) — Direction: orchestration UX; portallib reactive; smolvm v1.6.0
+
+- **Strategy set (user):** focus smol-portal on the **orchestration layer** —
+  seamless to run PorTAL inside smolvm — not on the ML recipe (Ramp owns that via
+  `portallib`). Interim while portallib is README-only: test + document. When it
+  ships code: compare, adopt as engine, file issues/PRs upstream to portallib.
+- **UX landed (local, no GPU):** folded `port_e2e.py` sizing knobs into
+  `portal port` (`--max-samples/--max-seq-length/--batch-size/--rank/
+  --train-epochs/--extract-epochs/--convert-epochs/--cal-samples/--latent-dim/
+  --hidden-dim/--latent-mode`, `--cal-dataset`). Threaded via new `PortConfig`
+  knobs + `build_hypernet_config()`; defaults equal stage defaults so artifact
+  hashes don't drift. Closed the SPEC "known gap"; `port_e2e.py` kept as
+  programmatic/debug reference. +`test_port_config.py` (31 tests pass, ruff clean).
+- **smolvm bumped to v1.6.0** (from v1.5.2) via the new daily-startup routine —
+  new `src/cuda_daemon.rs` + `cuda-fork-raw-handles` upstream; shims must be
+  rebuilt for v1.6.0 before the next Lambda run. Logged in
+  `smolvm-notes/smolvm-version-watch.md`.
+- **Committed + pushed** the prior Phase A2 + 3-folder-docs work (`bdef823`).
+- **Daily watches added:** `daily-startup.mdc` rule (sync smolvm + check portallib)
+  + private `portallib-watch.md` / `smolvm-version-watch.md` logs.
+
 ## 2026-07-14 — Phase A2 prep: scientific-validation code + plans (local, no GPU)
 
 - **Context:** reviewed an external audit of the repo vs. Ramp's PorTAL writeup.

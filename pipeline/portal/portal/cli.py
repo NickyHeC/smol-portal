@@ -271,6 +271,26 @@ def port(
         Path | None,
         typer.Option("--source-adapter-dir", help="Existing source adapter to reuse."),
     ] = None,
+    cal_dataset: Annotated[
+        str | None,
+        typer.Option("--cal-dataset", help="Calibration dataset (defaults to --dataset)."),
+    ] = None,
+    max_samples: Annotated[
+        int | None, typer.Option(help="Limit train/eval rows (smoke sizing).")
+    ] = None,
+    max_seq_length: Annotated[int, typer.Option(help="Max sequence length.")] = 512,
+    batch_size: Annotated[int, typer.Option(help="Batch size (train/eval).")] = 4,
+    rank: Annotated[int, typer.Option(help="LoRA rank (source + generated target).")] = 16,
+    train_epochs: Annotated[int, typer.Option(help="Source LoRA training epochs.")] = 3,
+    extract_epochs: Annotated[int, typer.Option(help="Hypernetwork epochs.")] = 50,
+    convert_epochs: Annotated[int, typer.Option(help="Converter epochs.")] = 30,
+    cal_samples: Annotated[int, typer.Option(help="Converter calibration rows.")] = 256,
+    latent_dim: Annotated[int, typer.Option(help="Task latent dimensionality.")] = 256,
+    hidden_dim: Annotated[int, typer.Option(help="Hypernet/converter hidden width.")] = 512,
+    latent_mode: Annotated[
+        LatentMode,
+        typer.Option("--latent-mode", help="Latent ablation mode (real|zero|random|shuffled)."),
+    ] = LatentMode.REAL,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
 ) -> None:
     """End-to-end: train source LoRA → extract task latent → convert to target → eval."""
@@ -284,6 +304,19 @@ def port(
         dataset_name=dataset,
         output_dir=output_dir,
         skip_train=skip_train,
+        calibration_dataset=cal_dataset,
+        max_samples=max_samples,
+        max_seq_length=max_seq_length,
+        batch_size=batch_size,
+        lora_rank=rank,
+        train_epochs=train_epochs,
+        extract_epochs=extract_epochs,
+        convert_epochs=convert_epochs,
+        cal_samples=cal_samples,
+        latent_dim=latent_dim,
+        hidden_dim=hidden_dim,
+        latent_mode=latent_mode,
+        seed=seed,
     )
     console.print(f"[bold]Porting [cyan]{source}[/] → [cyan]{target}[/] on task [green]{task}[/]…")
     results = run_port_pipeline(cfg, source_adapter_dir=source_adapter_dir)

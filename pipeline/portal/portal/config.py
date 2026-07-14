@@ -142,7 +142,15 @@ class EvalConfig(BaseModel):
 
 
 class PortConfig(BaseModel):
-    """Full end-to-end config for `portal port`."""
+    """Full end-to-end config for `portal port`.
+
+    Per-stage sizing knobs (below) let the CLI drive smoke-sized or real runs
+    directly, matching the `port_e2e.py` reference driver. Their defaults equal
+    the individual stage-config defaults, so a plain `portal port` is unchanged
+    (and produces the same content-addressed artifacts as before). Providing an
+    explicit `train`/`hypernet`/`converter` config overrides the knobs for that
+    stage.
+    """
 
     source_model: str
     target_model: str
@@ -150,10 +158,25 @@ class PortConfig(BaseModel):
     dataset_name: str
     output_dir: Path = DEFAULT_OUTPUT_DIR
     train: TrainConfig | None = None
-    hypernet: HypernetConfig = Field(default_factory=HypernetConfig)
+    hypernet: HypernetConfig | None = None
     converter: ConverterConfig | None = None
     eval_split: str = "test"
     skip_train: bool = False
+
+    # --- per-stage sizing knobs (defaults mirror the stage configs) ---
+    calibration_dataset: str | None = None  # defaults to dataset_name
+    max_samples: int | None = None
+    max_seq_length: int = 512
+    batch_size: int = 4
+    lora_rank: int = 16
+    train_epochs: int = 3
+    extract_epochs: int = 50
+    convert_epochs: int = 30
+    cal_samples: int = 256
+    latent_dim: int = 256
+    hidden_dim: int = 512
+    latent_mode: LatentMode = LatentMode.REAL
+    seed: int = 42
 
     def build_train_config(self) -> TrainConfig:
         if self.train is not None:
@@ -162,6 +185,22 @@ class PortConfig(BaseModel):
             source_model=self.source_model,
             task_name=self.task_name,
             dataset_name=self.dataset_name,
+            max_samples=self.max_samples,
+            lora=LoraConfig(rank=self.lora_rank),
+            num_epochs=self.train_epochs,
+            batch_size=self.batch_size,
+            max_seq_length=self.max_seq_length,
+            seed=self.seed,
+        )
+
+    def build_hypernet_config(self) -> HypernetConfig:
+        if self.hypernet is not None:
+            return self.hypernet
+        return HypernetConfig(
+            latent_dim=self.latent_dim,
+            hidden_dim=self.hidden_dim,
+            num_epochs=self.extract_epochs,
+            seed=self.seed,
         )
 
     def build_converter_config(self) -> ConverterConfig:
@@ -169,7 +208,12 @@ class PortConfig(BaseModel):
             return self.converter
         return ConverterConfig(
             target_model=self.target_model,
-            calibration_dataset=self.dataset_name,
+            calibration_dataset=self.calibration_dataset or self.dataset_name,
+            calibration_samples=self.cal_samples,
+            hidden_dim=self.hidden_dim,
+            num_epochs=self.convert_epochs,
+            latent_mode=self.latent_mode,
+            seed=self.seed,
         )
 
     def build_eval_config(self, model_name: str) -> EvalConfig:
@@ -178,6 +222,9 @@ class PortConfig(BaseModel):
             task_name=self.task_name,
             dataset_name=self.dataset_name,
             dataset_split=self.eval_split,
+            max_samples=self.max_samples,
+            batch_size=self.batch_size,
+            max_seq_length=self.max_seq_length,
         )
 
 

@@ -301,17 +301,39 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 | Multi-VM OOM on shared GPU | NVIDIA driver returns clean errors; orchestrator pins one job per GPU |
 | vsock latency on hot CUDA paths | Profile in Phase B; acceptable for training workloads |
 
+## Near-term direction (2026-07-14)
+
+Ramp published the official reference — [`ramp-public/portallib`](https://github.com/ramp-public/portallib)
+(+ the `portallib-tasks` dataset). It reframes our focus:
+
+- **Own the orchestration layer, not the ML recipe.** smol-portal's job is making
+  PorTAL **seamless to run inside smolvm** (packaging, CLI/UX, artifacts, multi-GPU)
+  — one coherent system across portallib (engine) ↔ smol-portal (orchestration) ↔
+  smolvm (infra). When portallib's code lands, adopt it as the engine rather than
+  maintaining a parallel reimplementation.
+- **Interim (portallib is README-only): test + document.** Keep validating the
+  current pipeline on Lambda and record findings; don't over-invest in ML
+  correctness we'll inherit.
+- **Reactive to releases:** track portallib daily (see the daily-startup rule);
+  when it ships code, compare and **file issues/PRs upstream to portallib** where
+  useful — same contribution posture we use for smolvm.
+
 ## Immediate next steps
 
-1. **Phase A2 code (local, done):** dataset schema guard, required `--cal-dataset`,
-   runtime manifest, `--latent-mode` ablation, `portal baseline`. All CPU-unit-tested.
-2. **Phase A2 on Lambda (next several days):** run the latent-matters ablation
-   (`real` vs `zero|random|shuffled`) and the `portal baseline` vs `portal port`
-   comparison. This is the priority — it tells us whether the mechanism works.
-3. **Step 8:** Scale Qwen → target (Gemma with `HF_TOKEN` or TinyLlama) for
-   accuracy, not just pipeline smoke — after task metrics land.
-4. **Upstream tracking:** smolvm #596 / #598 — drop manual shim install and
-   pre-baked-image docs when PRs land.
+1. **Orchestration UX (local, ongoing):** ✅ `portal port` now exposes per-stage
+   sizing knobs (samples/seq/batch/rank/epochs/latent) — real & smoke runs no
+   longer need the `port_e2e.py` driver inside the VM. Next: smoother
+   `machine run` wrapping and clearer in-VM errors.
+2. **Phase A2 code (local, done):** dataset schema guard, required `--cal-dataset`,
+   runtime manifest, `--latent-mode` ablation, `portal baseline`. CPU-unit-tested.
+3. **Phase A2 on Lambda (next several days):** latent-matters ablation
+   (`real` vs `zero|random|shuffled`) + `portal baseline` vs `portal port`.
+   Adopt portallib's `acc_norm` metric + `portallib-tasks` so numbers are
+   comparable to ground truth.
+4. **When portallib code lands:** read it end-to-end, decide wrap-vs-keep, and
+   align our pipeline/metrics; open issues/PRs where we find gaps.
+5. **Upstream tracking:** smolvm now at **v1.6.0** — rebuild shims to match before
+   the next Lambda run; #596 / #598 workarounds drop when those PRs land.
 
 ---
 _Status: Systems path (Phase B) complete on smolvm v1.5.2 — real-model `portal port`

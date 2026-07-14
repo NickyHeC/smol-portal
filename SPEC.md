@@ -86,10 +86,17 @@ with the ported run.
 `--from` (required), `--to` (required), `--task/-t` (required), `--dataset/-d`
 (required), `--skip-train`, `--source-adapter-dir`.
 
-> **Known gap:** `portal port` does not currently expose per-stage sample/epoch
-> sizing. For controllable smoke-sized e2e runs use
-> [`examples/smolvm/port_e2e.py`](examples/smolvm/port_e2e.py), which drives the
-> same pipeline via the Python API.
+Per-stage sizing knobs (drive smoke-sized or real runs directly from the CLI):
+`--cal-dataset` (defaults to `--dataset`), `--max-samples`, `--max-seq-length`
+(512), `--batch-size` (4), `--rank` (16), `--train-epochs` (3),
+`--extract-epochs` (50), `--convert-epochs` (30), `--cal-samples` (256),
+`--latent-dim` (256), `--hidden-dim` (512),
+`--latent-mode` (`real`|`zero`|`random`|`shuffled`), `--seed` (42).
+
+All knob defaults equal the individual stage-config defaults, so a plain
+`portal port` is unchanged and produces the same content-addressed artifacts.
+[`examples/smolvm/port_e2e.py`](examples/smolvm/port_e2e.py) remains as a
+programmatic reference driver but the CLI now covers the same sizing.
 
 ---
 
@@ -119,8 +126,13 @@ EvalConfig       model_name, task_name, dataset_name,
                  max_seq_length=512
 
 PortConfig       source_model, target_model, task_name, dataset_name,
-                 output_dir, train?, hypernet, converter?, eval_split="test",
-                 skip_train=False
+                 output_dir, train?, hypernet?, converter?, eval_split="test",
+                 skip_train=False, + sizing knobs (calibration_dataset?,
+                 max_samples?, max_seq_length=512, batch_size=4, lora_rank=16,
+                 train_epochs=3, extract_epochs=50, convert_epochs=30,
+                 cal_samples=256, latent_dim=256, hidden_dim=512,
+                 latent_mode="real", seed=42). Knobs feed build_*_config() when
+                 the matching train?/hypernet?/converter? is not set explicitly.
 ```
 
 ---

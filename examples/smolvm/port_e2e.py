@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Reference end-to-end PorTAL run (train -> extract -> convert -> eval).
 
-This mirrors ``portal port`` but exposes the smoke-sizing knobs the CLI does not
-yet surface (sample counts, sequence length, per-stage epochs). Use it as a
-template for driving the pipeline programmatically, e.g. from a coding agent.
+``portal port`` now surfaces the same smoke-sizing knobs (``--max-samples``,
+``--max-seq-length``, ``--rank``, per-stage ``--*-epochs``, ``--cal-samples``,
+``--latent-dim``, ``--hidden-dim``, ``--latent-mode``), so prefer the CLI for
+normal use. This script remains as a template for driving the pipeline
+programmatically (e.g. from a coding agent) or for stage-by-stage debugging.
 
 Intended to run *inside* a CUDA-enabled smolvm guest (see README.md). Install
 portal in the VM first, then run this script. Example wrapper:
