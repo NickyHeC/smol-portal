@@ -37,6 +37,7 @@ from portal.config import (
     ArtifactKind,
     content_hash,
 )
+from portal.env import runtime_manifest
 
 # ---------------------------------------------------------------------------
 # Task latents
@@ -54,7 +55,9 @@ def save_task_latent(
 
     st.save_file({"task_latent": latent}, artifact_dir / LATENT_FILENAME)
 
-    meta_with_ts = {**meta, "created_at": _now_iso()}
+    # `created_at` / `runtime` are added *after* the directory hash is computed
+    # (in `_artifact_dir`), so provenance never changes the content address.
+    meta_with_ts = {**meta, "created_at": _now_iso(), "runtime": runtime_manifest()}
     (artifact_dir / LATENT_META_FILENAME).write_text(
         json.dumps(meta_with_ts, indent=2, default=str)
     )
@@ -88,7 +91,7 @@ def save_adapter(
 
     model.save_pretrained(str(adapter_dir))
 
-    meta = {**config, "kind": kind, "created_at": _now_iso()}
+    meta = {**config, "kind": kind, "created_at": _now_iso(), "runtime": runtime_manifest()}
     (artifact_dir / "adapter_meta.json").write_text(json.dumps(meta, indent=2, default=str))
     return artifact_dir
 
@@ -119,6 +122,7 @@ def save_eval_results(
         "config": config,
         "metrics": results,
         "created_at": _now_iso(),
+        "runtime": runtime_manifest(),
     }
     (artifact_dir / EVAL_FILENAME).write_text(json.dumps(payload, indent=2, default=str))
     return artifact_dir

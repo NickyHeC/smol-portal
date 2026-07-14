@@ -5,6 +5,39 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-14 — Phase A2 prep: scientific-validation code + plans (local, no GPU)
+
+- **Context:** reviewed an external audit of the repo vs. Ramp's PorTAL writeup.
+  Verdict confirmed against code: systems path works, but the *mechanism* is
+  unproven — autoencoder trains on one adapter vector, converter sees one fixed
+  latent `z`, no baseline, perplexity-only eval. Risk = mistaking "pipeline ran"
+  for "PorTAL worked."
+- **Landed now (CPU-only, `pytest` 11→27 green, ruff clean):**
+  - `portal/data.py` — explicit dataset text resolution + `DatasetSchemaError`;
+    wired into train/convert/eval (no more silent empty-string training). Keeps
+    `text`→`input` precedence so IMDB runs are unchanged.
+  - `portal convert` — `--cal-dataset` now **required** (killed the silent
+    fallback to target-model id). `portal port` still auto-sets it from `--dataset`.
+  - `portal/env.py` — `runtime_manifest()` (lib versions, git commit, platform)
+    embedded in every artifact's metadata, **excluded from the content hash**.
+  - `--latent-mode {real|zero|random|shuffled}` on `convert` (`LatentMode` enum +
+    `apply_latent_mode`) — the "does the latent matter?" ablation knob.
+  - `portal baseline` (`portal/baseline.py`) — direct target-LoRA train+eval; the
+    comparison point for `port`. Uses `{task}__baseline` artifact namespace.
+  - New tests: `test_data.py`, `test_latent_mode.py`, `test_env.py`,
+    `test_artifacts.py::test_latent_records_runtime_but_hash_excludes_it`.
+- **Docs:** ROADMAP Phase A2 (build + test plan, local-done vs Lambda-next);
+  SPEC convert/baseline/metrics/§7 determinism softened + manifest; README scope
+  note + softened reproducibility claim.
+- **Next Lambda session (priority order):** (1) latent-matters ablation — sweep
+  `--latent-mode`, want `real` ≪ `zero|random|shuffled`; (2) `portal baseline` vs
+  `portal port` recovery ratio; (3) task-specific metrics (accuracy/F1) before any
+  "% of direct LoRA" claim; (4) fold `port_e2e.py` smoke knobs into `portal port`.
+- **Not done (needs GPU / bigger design):** task metrics, cross-task converter
+  reuse (save converter as artifact), converter output-head scaling (dense
+  `hidden × total_lora_params` won't scale), wiring `find_artifact` caching
+  (blocked on latent hash depending on post-extraction `input_dim`).
+
 ## 2026-07-13 (Lambda, ~1 h) — Real-model PorTAL on smolvm v1.5.2
 
 - **Stack:** smolvm **v1.5.2** tarball + upstream `v1.5.2` shims, `portal-cuda.tar` (built on Lambda), A10.

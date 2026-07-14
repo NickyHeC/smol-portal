@@ -12,6 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from portal.artifacts import load_adapter_path, save_eval_results
 from portal.config import EvalConfig
 from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
+from portal.data import extract_text
 
 
 def evaluate_adapter(
@@ -53,7 +54,7 @@ def evaluate_adapter(
         ds = ds.select(range(min(config.max_samples, len(ds))))
 
     def tokenize(example: dict) -> dict:
-        text = example.get("text") or example.get("input", "")
+        text = extract_text(example)
         return tokenizer(
             text,
             truncation=True,

@@ -19,6 +19,7 @@ from transformers import (
 from portal.artifacts import save_adapter
 from portal.config import TrainConfig
 from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
+from portal.data import extract_text
 
 
 def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
@@ -52,7 +53,7 @@ def train_source_lora(config: TrainConfig, output_dir: Path) -> Path:
         ds = ds.select(range(min(config.max_samples, len(ds))))
 
     def tokenize(example: dict) -> dict:
-        text = example.get("text") or example.get("input", "")
+        text = extract_text(example)
         return tokenizer(
             text,
             truncation=True,

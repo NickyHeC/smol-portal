@@ -137,10 +137,34 @@ good mental model for how GPU virtualization *could* work at the driver level.
 
 What actually runs inside the VMs.
 
-- **Ramp Labs — PorTAL announcement** — https://x.com/RampLabs/status/2072381992285647280
-  Portable Task Adapters: learn a task once on a source model, port to new
-  base models via a slim converter on limited calibration data (~94–98% of
-  LoRA accuracy at ~half the cost).
+- **Ramp Labs — PorTAL paper** (Geist, 2026) — https://x.com/RampLabs/status/2072381992285647280
+  *Portable Task Adapters.* Learns a **base-agnostic task latent** `z_t` (dim 256)
+  and a hypernetwork decoder `D_b` = a **shared base-agnostic core** + a **thin
+  per-base converter**, FiLM-conditioned (`z_t` scales/shifts a trunk fed per-layer
+  embeddings `e_ℓ`), trained end-to-end on gold-continuation NLL. To **port** to an
+  unseen base, freeze `z_t` + core and refit only the thin converter
+  (`{e_ℓ, P_in, P_out}`) on a small calibration set. Results, as *recovered lift*
+  = (acc_m − acc_b)/(acc_L − acc_b): **~98%** on unseen Qwen3-8B (within-family)
+  and **~94%** on Gemma-3-4B (cross-family), vs Cross-LoRA ~14%; matches
+  from-scratch LoRA at ~half the calibration data. Builds on Sakana's Text-to-LoRA
+  (hypernetwork LoRA generation) but adds cross-base portability. Primary-source
+  PDF saved at `~/Desktop/X.pdf`.
+- **⭐ Ramp — `portallib` (official open-source implementation)** —
+  https://github.com/ramp-public/portallib (public 2026-07-13)
+  The real reference implementation. **Use it to check our reimplementation's
+  assumptions** (hypernetwork/converter design, calibration protocol, baselines)
+  rather than reverse-engineering from the announcement. smol-portal is *not* a
+  fork — it's our own smolvm-hosted orchestration — but portallib is now the
+  ground-truth recipe.
+- **Ramp — `RampPublic/portallib-tasks` (dataset)** —
+  https://huggingface.co/datasets/RampPublic/portallib-tasks
+  The 14-task multiple-choice suite used by portallib (129,212 train / 19,548
+  val). Rows: `task`, `prompt`, `choices`, `gold_idx`. **Validation metric is
+  `acc_norm`** — continuation log-prob normalized by character length — *not*
+  perplexity. This is the metric our Phase A2 task-metric work should target.
+- **Sakana AI — Text-to-LoRA** — the technique PorTAL builds on: a hypernetwork
+  that generates task LoRAs from a text description. PorTAL's contribution is
+  making the generated adapter portable across (unseen) base models.
 - **Ramp Labs — Building with Tinker** — https://ramplabs.substack.com/p/building-with-tinker
   Context on their fine-tuning tooling and async reward-function workflow.
 - **LoRA (Hu et al., 2021)** — https://arxiv.org/abs/2106.09685

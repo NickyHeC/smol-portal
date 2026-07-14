@@ -1,0 +1,61 @@
+---
+description: smol-portal ↔ smolvm are paired — cross-edit both local repos before pushing
+alwaysApply: true
+---
+
+# smol-portal ↔ smolvm interop
+
+These two local checkouts are **paired**. smol-portal develops and tests PorTAL on
+top of smolvm's CUDA microVMs; bugs found here are often fixed in smolvm, and
+smolvm CUDA fixes must be re-validated here before calling PorTAL done.
+
+## Three-folder model (canonical — keep this table identical in both repos' rules)
+
+The product spans **three** local folders. Agents MUST reference and maintain all
+three, and put each kind of content in the right one.
+
+| Folder | Path | Git / visibility | Role | Owns (content type) | Never put here |
+|--------|------|------------------|------|---------------------|----------------|
+| **smolvm** | `/Users/nicky/Documents/smolvm` | public — upstream `smol-machines/smolvm` + fork `NickyHeC/smolvm` | **Foundation**: microVM + CUDA remoting runtime. Catch bugs here, submit upstream. | Rust runtime/shim/protocol code; smolvm `docs/`; runtime behavior in `AGENTS.md`; upstream issue/PR text | PorTAL ML pipeline code; private session logs; secrets/box IPs |
+| **smolvm-notes** | `/Users/nicky/Documents/smolvm-notes` | **local only, NOT a git repo (private)** | **Scratchpad**: raw session logs, canonical runbook, detailed *unpublished* plans, strategy. | `cuda-build-plan.md`, `github-action-items.md`, canonical `lambda-instructions.md` (may hold real box/PEM detail), `portal-reference-plan.md`, `upstream-branch-analysis.md`, `port_e2e_lambda.py` | Anything that must be committed/shared; the canonical public spec/roadmap |
+| **smol-portal** | `/Users/nicky/Documents/smol-portal` | public — `NickyHeC/smol-portal` | **Product**: open-source PorTAL orchestration. Everything here is committed & shared. | `pipeline/portal` code, `examples/smolvm/`, public `README`/`ROADMAP`/`SPEC`/`AGENTS`/`memory`/`reference-material`, sanitized runbook copy | Secrets, raw box IPs/PEM paths, unpublished detailed plans, private strategy |
+
+**Flow:** _private source (notes) → distill → public product (smol-portal); runtime bugs → smolvm → upstream._
+
+**Sync pairs** (keep both sides in step; sanitize on the way *out* to public):
+- `smolvm-notes/lambda-instructions.md` (canonical/private) ↔ `smol-portal/examples/smolvm/lambda-instructions.md` (sanitized, `OWNER` placeholder, no keys).
+- `smolvm-notes/{cuda-build-plan,github-action-items}.md` (raw logs) → `smol-portal/memory.md` (public summary).
+- `smolvm-notes/portal-reference-plan.md` (detailed plans) → `smol-portal/ROADMAP.md` (public phase plan).
+- `smolvm-notes/port_e2e_lambda.py` ↔ `smol-portal/examples/smolvm/port_e2e.py` (de-anonymized).
+
+## Mandatory workflow
+
+1. **Before pushing smol-portal changes that depend on smolvm behavior**, update
+   the local smolvm tree when the right fix belongs upstream (shim, staging,
+   docs, release packaging) — open/adjust the smolvm PR, don't only paper over
+   it in Python forever.
+2. **Before pushing smolvm CUDA/UX fixes**, update local smol-portal:
+   `pipeline/portal` (e.g. `portal.cuda`), `examples/smolvm/`, `memory.md`,
+   `ROADMAP.md` as needed so the validation recipe matches reality.
+3. **Cross-edit and dual-document** when a session touches both (Lambda GPU
+   runs, SDPA workarounds, image layout, shim install).
+4. **Lambda runbook:** `examples/smolvm/lambda-instructions.md` and
+   `/Users/nicky/Documents/smolvm-notes/lambda-instructions.md` — keep in sync.
+5. Drop workarounds in `portal.cuda` only after the matching smolvm issue is
+   fixed and re-validated on Lambda.
+
+## When a change belongs where
+
+| Change | Primary repo | Also update |
+|--------|--------------|-------------|
+| PorTAL train/extract/convert/eval/port | smol-portal | smolvm only if a runtime bug is found |
+| Math SDPA / device_map workarounds | smol-portal `portal.cuda` | comment on smolvm #597 until fixed |
+| Worker Dockerfile / Smolfile / Lambda steps | smol-portal `examples/smolvm/` | `smolvm-notes/lambda-instructions.md` |
+| Shim / launch / staging / release tarball | smolvm | re-test recipe in smol-portal examples + memory |
+
+## Agents: edit across roots
+
+The Cursor workspace may be only smol-portal. You still MAY and SHOULD edit
+`/Users/nicky/Documents/smolvm` (and `smolvm-notes`) when fixing or documenting
+runtime issues discovered through PorTAL. Prefer absolute paths. Summarize
+changes in **both** repos in the reply.

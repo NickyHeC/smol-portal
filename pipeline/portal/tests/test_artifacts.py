@@ -31,6 +31,22 @@ def test_task_latent_roundtrip(tmp_path):
     assert "created_at" in loaded_meta
 
 
+def test_latent_records_runtime_but_hash_excludes_it(tmp_path):
+    latent = torch.randn(64)
+    meta = {"source_model": "m", "task_name": "t", "latent_dim": 64}
+
+    artifact_dir = save_task_latent(latent, meta, tmp_path)
+
+    # Provenance manifest is recorded in the written metadata…
+    _, loaded_meta = load_task_latent(artifact_dir)
+    assert "runtime" in loaded_meta
+    assert "packages" in loaded_meta["runtime"]
+
+    # …but the directory hash is computed over the caller's meta only, so it
+    # stays stable across machines/library versions (idempotent reruns).
+    assert artifact_dir.name.endswith(content_hash(meta))
+
+
 def test_eval_results_roundtrip(tmp_path):
     metrics = {"loss": 0.42, "perplexity": 1.52, "num_samples": 100}
     config = {"task_name": "test_task", "model_name": "test-model", "dataset_name": "test-ds"}

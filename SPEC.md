@@ -62,8 +62,20 @@ All options are named. Common: `--output-dir/-o` (default `artifacts/`),
 
 ### `portal convert`
 `--latent-dir/-l` (required), `--target/-t` (required), `--task` (required),
-`--cal-dataset` (defaults to target model id if unset), `--cal-samples` (256),
-`--epochs` (30).
+`--cal-dataset` (**required** — the task dataset; there is no sane default, so
+passing a model id or omitting it errors instead of silently loading nothing),
+`--cal-samples` (256), `--epochs` (30),
+`--latent-mode` (`real`|`zero`|`random`|`shuffled`, default `real`) — ablation
+knob to test whether the source latent actually contributes (see ROADMAP A2).
+
+### `portal baseline`
+`--model/-m` (required, the **target** model), `--task/-t` (required),
+`--dataset/-d` (required), `--rank` (16), `--epochs` (3), `--batch-size` (4),
+`--max-seq-length` (512), `--max-samples` (none), `--split` (`test`).
+Trains a LoRA **directly** on the target and evals it on the same split as
+`portal eval`, producing the comparison point for a ported adapter. Its adapter
+and eval artifacts use the `{task}__baseline` task name so they don't collide
+with the ported run.
 
 ### `portal eval`
 `--adapter-dir/-a` (required), `--model/-m` (required), `--task/-t` (required),
@@ -97,9 +109,10 @@ TrainConfig      source_model, task_name, dataset_name,
 HypernetConfig   latent_dim=256, hidden_dim=512, num_layers=3,
                  learning_rate=1e-3, num_epochs=50, seed=42
 
-ConverterConfig  target_model, calibration_dataset=None,
+ConverterConfig  target_model, calibration_dataset=None (required at run time),
                  calibration_split="train", calibration_samples=256,
-                 hidden_dim=512, learning_rate=1e-3, num_epochs=30, seed=42
+                 hidden_dim=512, learning_rate=1e-3, num_epochs=30,
+                 latent_mode="real" (real|zero|random|shuffled), seed=42
 
 EvalConfig       model_name, task_name, dataset_name,
                  dataset_split="test", max_samples=None, batch_size=8,
@@ -126,7 +139,14 @@ config.
 └── eval_{hash}/eval_results.json   # {config, metrics, created_at}
 ```
 
-Eval metrics: `loss`, `perplexity`, `num_samples`, `num_batches`.
+Eval metrics: `loss`, `perplexity`, `num_samples`, `num_batches`. Task-specific
+metrics (accuracy/F1/exact-match) are **not yet implemented** — see ROADMAP A2.
+Perplexity alone cannot substantiate an accuracy claim.
+
+Every artifact's metadata also carries a `runtime` manifest (portal version,
+Python/platform, key library versions, git commit). It records the environment
+that produced the artifact for provenance/debugging and is **excluded from the
+content hash**, so identical configs still resolve to the same directory.
 
 ---
 
@@ -170,7 +190,17 @@ smolvm machine run --net --cuda --mem 16384 \
 
 ## 7. Determinism
 
-- All stages call `set_seed`/`manual_seed` (default 42) and are content-addressed,
-  so identical configs yield identical artifacts and let reruns cache-hit.
+- All stages call `set_seed`/`manual_seed` (default 42) and are content-addressed:
+  the same **normalized config** resolves to the same artifact **directory**
+  (identity), so reruns can cache-hit on path.
+- This is *config* identity, not bit-for-bit output reproducibility. The content
+  hash does **not** cover library versions, dataset/model/tokenizer revisions,
+  CUDA shim build, or hardware — and GPU kernels are not guaranteed deterministic.
+  The `runtime` manifest embedded in each artifact records those revisions so a
+  run can be traced even when upstream inputs drift.
 - Training results are independent of the SDPA backend (math vs. fused produce
   the same curves); only performance differs.
+- ⚠️ `find_artifact()` exists for cache-hit lookups but is **not yet wired into**
+  the pipeline — stages currently always re-run and overwrite the same-hash dir.
+  (The latent artifact's hash also depends on `input_dim`, which is only known
+  after extraction, so extract-stage caching needs a hashing change first.)

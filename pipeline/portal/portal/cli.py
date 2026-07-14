@@ -5,6 +5,7 @@ Commands:
     portal extract — Extract a base-agnostic task latent from a trained LoRA.
     portal convert — Project a task latent into a target model's LoRA adapter.
     portal eval    — Evaluate an adapter on a benchmark.
+    portal baseline— Train + eval a direct LoRA on the target (comparison point).
     portal port    — End-to-end: train → extract → convert → eval.
 """
 
@@ -17,7 +18,7 @@ import typer
 from rich.console import Console
 
 from portal import __version__
-from portal.config import DEFAULT_OUTPUT_DIR
+from portal.config import DEFAULT_OUTPUT_DIR, LatentMode
 
 app = typer.Typer(
     name="portal",
@@ -131,10 +132,17 @@ def convert(
     ],
     target: Annotated[str, typer.Option("--target", "-t", help="Target model name or HF id.")],
     task: Annotated[str, typer.Option("--task", help="Task name.")],
+    calibration_dataset: Annotated[
+        str,
+        typer.Option("--cal-dataset", help="Calibration dataset HF id (the task dataset)."),
+    ],
     output_dir: Annotated[Path, typer.Option("--output-dir", "-o")] = DEFAULT_OUTPUT_DIR,
-    calibration_dataset: Annotated[str | None, typer.Option("--cal-dataset")] = None,
     calibration_samples: Annotated[int, typer.Option("--cal-samples")] = 256,
     epochs: Annotated[int, typer.Option(help="Converter training epochs.")] = 30,
+    latent_mode: Annotated[
+        LatentMode,
+        typer.Option("--latent-mode", help="Latent ablation mode (real|zero|random|shuffled)."),
+    ] = LatentMode.REAL,
     seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
 ) -> None:
     """Project a task latent into a target model's LoRA adapter."""
@@ -146,6 +154,7 @@ def convert(
         calibration_dataset=calibration_dataset,
         calibration_samples=calibration_samples,
         num_epochs=epochs,
+        latent_mode=latent_mode,
         seed=seed,
     )
     console.print(f"[bold]Converting task latent → [cyan]{target}[/] adapter…")
@@ -198,6 +207,49 @@ def eval_cmd(
         output_dir=output_dir,
     )
     console.print(f"[bold green]✓[/] Eval results saved to {result_dir}")
+
+
+# ---------------------------------------------------------------------------
+# portal baseline  (direct target LoRA — the comparison point for `port`)
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def baseline(
+    model: Annotated[
+        str, typer.Option("--model", "-m", help="Target model to train a direct LoRA on.")
+    ],
+    task: Annotated[str, typer.Option("--task", "-t", help="Task name.")],
+    dataset: Annotated[str, typer.Option("--dataset", "-d", help="HuggingFace dataset id.")],
+    output_dir: Annotated[Path, typer.Option("--output-dir", "-o")] = DEFAULT_OUTPUT_DIR,
+    rank: Annotated[int, typer.Option(help="LoRA rank.")] = 16,
+    epochs: Annotated[int, typer.Option(help="Training epochs.")] = 3,
+    batch_size: Annotated[int, typer.Option(help="Batch size.")] = 4,
+    max_seq_length: Annotated[int, typer.Option(help="Max sequence length.")] = 512,
+    max_samples: Annotated[int | None, typer.Option(help="Limit dataset rows.")] = None,
+    split: Annotated[str, typer.Option(help="Dataset split for eval.")] = "test",
+    seed: Annotated[int, typer.Option(help="Random seed.")] = 42,
+) -> None:
+    """Train + evaluate a direct LoRA on the target model (the baseline for `port`)."""
+    from portal.baseline import run_direct_lora_baseline
+
+    console.print(f"[bold]Direct-LoRA baseline on [cyan]{model}[/] for task [green]{task}[/]…")
+    results = run_direct_lora_baseline(
+        target_model=model,
+        task_name=task,
+        dataset_name=dataset,
+        output_dir=output_dir,
+        rank=rank,
+        num_epochs=epochs,
+        batch_size=batch_size,
+        max_seq_length=max_seq_length,
+        max_samples=max_samples,
+        eval_split=split,
+        seed=seed,
+    )
+    console.print("\n[bold green]✓ Baseline complete.[/]")
+    console.print(f"  Adapter      : {results['adapter_dir']}")
+    console.print(f"  Eval results : {results['eval_dir']}")
 
 
 # ---------------------------------------------------------------------------

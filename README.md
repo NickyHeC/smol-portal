@@ -4,6 +4,13 @@ Run [PorTAL](https://x.com/RampLabs/status/2072381992285647280) (Portable Task A
 
 Learn a task once on a source model, extract a base-agnostic task latent, then port it to new base models with a slim converter — at roughly half the calibration cost of full LoRA, targeting ~94–98% of direct LoRA accuracy.
 
+> **Scope note.** The end-to-end *systems* path (train → extract → convert → eval
+> inside CUDA smolvm) works on real models. The PorTAL *research claim* — a
+> model-independent task latent that recovers ~94–98% of direct-LoRA accuracy at
+> ~half the cost — is **not yet reproduced or measured here** (that figure is
+> Ramp's target, not a result of this repo). See [ROADMAP.md](ROADMAP.md) Phase A2
+> for the validation plan.
+
 ## Status
 
 **smolvm CUDA validation (Lambda A10, 2026-07-13):** LoRA training and full `portal port`
@@ -50,7 +57,7 @@ The core workflow:
 portal port --from qwen3 --to gemma3 --task my-task --dataset <hf_dataset_id>
 ```
 
-Individual steps are also available: `portal train`, `portal extract`, `portal convert`, `portal eval`.
+Individual steps are also available: `portal train`, `portal extract`, `portal convert`, `portal eval`. `portal baseline` trains + evals a direct LoRA on the target model — the comparison point a ported adapter is measured against.
 
 ## Quick start
 
@@ -99,7 +106,12 @@ artifacts/{task_name}/
 └── eval_{hash}/eval_results.json   # metrics
 ```
 
-Same config → same hash → idempotent reruns.
+Same **normalized config → same hash → same artifact directory** (path identity,
+so reruns can cache-hit). This is config identity, not bit-for-bit output
+reproducibility: the hash does not cover library/model/dataset revisions or
+hardware, and GPU kernels aren't guaranteed deterministic. Each artifact embeds a
+`runtime` manifest (library versions, git commit, platform) — recorded for
+provenance and **excluded from the hash**. See [SPEC.md](SPEC.md) §7.
 
 ## Security model
 

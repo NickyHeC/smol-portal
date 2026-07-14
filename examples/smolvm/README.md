@@ -119,6 +119,32 @@ python3 examples/smolvm/port_e2e.py \
 For agent-driven use and the full contract, see [`AGENTS.md`](../../AGENTS.md)
 and [`SPEC.md`](../../SPEC.md).
 
+## Next Lambda session — Phase A2 scientific validation
+
+The pipeline runs; the next runs must test whether the *mechanism* works (see
+[ROADMAP.md](../../ROADMAP.md) Phase A2). Priority order:
+
+1. **Latent-matters ablation** (most informative). Same task/target/calibration,
+   convert once per `--latent-mode`, eval each:
+
+   ```bash
+   for mode in real zero random shuffled; do
+     portal convert -l <latent-dir> -t <target> --task imdb-port \
+       --cal-dataset stanfordnlp/imdb --latent-mode "$mode" -o /tmp/abl-$mode
+     portal eval -a /tmp/abl-$mode/imdb-port/target_lora_* -m <target> \
+       -t imdb-port -d stanfordnlp/imdb
+   done
+   ```
+
+   Want `real` perplexity **meaningfully below** `zero|random|shuffled`. If they
+   tie, the converter is ignoring the latent — the port mechanism is inert.
+2. **Baseline vs port.** `portal baseline -m <target> -t <task> -d <dataset>`
+   then compare its `eval_results.json` perplexity to a `portal port` run on the
+   same split/samples. Record the recovery ratio (no accuracy claim until
+   task-specific metrics land).
+3. `port_e2e.py` still exposes the smoke-sizing knobs `portal port` lacks; use it
+   until those fold into the CLI.
+
 ## SDPA / #597 history
 
 | smolvm | Fused SDPA backward | Workaround |

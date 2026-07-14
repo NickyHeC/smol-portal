@@ -129,13 +129,17 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - This is the core novel piece — the converter learns to "project" the
   base-agnostic latent into the target model's weight space.
 
-**Step 6 — Evaluation (`portal eval`)**
+**Step 6 — Evaluation (`portal eval` + `portal baseline`)**
 - Load target base model + generated LoRA adapter.
 - Compute perplexity / loss on a held-out split of the task dataset.
-- Compare against baselines: (a) direct LoRA on target (upper bound),
-  (b) no adapter (lower bound).
+- Compare against baselines: (a) direct LoRA on target (upper bound) — now via
+  `portal baseline`; (b) no adapter (lower bound) — eval the base model with no
+  adapter. ⚠️ These comparisons are **not yet automated inside `portal port`**;
+  run `portal baseline` separately and compare the eval JSONs (see Phase A2).
 - Output: `eval_results.json` with loss, perplexity, sample count.
-- Target: recover ~94–98% of direct LoRA accuracy.
+- ⚠️ Metrics are currently **loss/perplexity only** — task-specific accuracy/F1
+  is Phase A2 work. The "~94–98% of direct LoRA accuracy" figure is an
+  aspirational target from Ramp's writeup, **not** a measured result here.
 
 **Step 7 — End-to-end `portal port` wiring** ✅ (smolvm CUDA smoke, 2026-07-13)
 - Orchestrate: train → extract → convert → eval in one command.
@@ -149,6 +153,94 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - If dev-scale result holds, scale to larger models on Spark.
 - Freeze CLI args, artifact formats, eval JSON schema.
 - Update this roadmap with results and any discovered constraints.
+
+### Phase A2 — Scientific validation (design the experiment that can disprove the claim)
+
+The systems path is proven: `train → extract → convert → eval` completes on real
+models inside CUDA smolvm. What is **not** proven is the PorTAL *mechanism* — that
+the task latent is model-independent and that porting recovers most of a direct
+LoRA's accuracy at a fraction of the cost. Two structural facts make this the
+priority, not more infrastructure:
+
+- **The latent may not matter.** The autoencoder is trained on a *single*
+  adapter vector (`hypernetwork.py`, `unsqueeze(0)`), and the converter sees one
+  *fixed* latent `z` every step. So the converter could be learning the task
+  directly from calibration data and ignoring the latent entirely.
+- **There is no measured comparison.** Eval reports perplexity only; there was
+  no direct-LoRA baseline and no task metric, so "94–98% of direct LoRA" has
+  nothing behind it in this repo.
+
+> **Guiding rule for this phase:** design runs that can *disprove* our own claim.
+> "It completed without error" is not "the mechanism worked."
+
+> **Ground truth now exists.** Ramp published the official implementation,
+> [`portallib`](https://github.com/ramp-public/portallib), and the
+> [`portallib-tasks`](https://huggingface.co/datasets/RampPublic/portallib-tasks)
+> 14-task suite. Their validation metric is **`acc_norm`** (continuation log-prob
+> normalized by character length), *not* perplexity. Phase A2's task-metric work
+> should target `acc_norm` on that suite so our numbers are directly comparable,
+> and we should check our hypernetwork/converter assumptions against portallib
+> rather than the announcement alone. See `reference-material.md`.
+
+#### Build plan
+
+**Landed now (local, no GPU — see PR / this branch):**
+- `portal/data.py` — explicit dataset text resolution + `DatasetSchemaError`;
+  wired into train/convert/eval. Unknown schemas now fail loudly instead of
+  training on empty strings.
+- `portal convert` — `--cal-dataset` is **required** (no more silent fallback to
+  the target-model id, which was never a dataset). `portal port` still sets it
+  from `--dataset` automatically.
+- `portal/env.py` — runtime provenance manifest (torch/transformers/peft/…
+  versions, git commit, platform) embedded in every artifact's metadata,
+  **excluded from the content hash** so reruns stay idempotent.
+- `--latent-mode {real|zero|random|shuffled}` on `portal convert` — the ablation
+  knob for the "does the latent matter?" experiment.
+- `portal baseline` — trains + evals a direct LoRA on the *target* model: the
+  comparison point the port result is measured against.
+
+**Next (needs Lambda GPU — run in the next several days):**
+1. **Latent-matters ablation** (highest priority). Same task/target/calibration,
+   sweep `--latent-mode` over `real|zero|random|shuffled`. If post-training eval
+   is ~equal across modes, the converter is ignoring the latent → the
+   portability mechanism is not yet doing anything.
+2. **Baseline comparison.** `portal baseline` (direct LoRA on target) vs
+   `portal port` (ported adapter), same split/samples. Report the ratio.
+3. **Task-specific metrics.** Add accuracy/F1 (classification) / exact-match /
+   token-F1 to `portal eval` alongside perplexity; wire the labeled path. Only
+   then can any "% of direct LoRA" number be stated.
+4. **`portal port` sizing parity.** Fold `port_e2e.py`'s smoke knobs
+   (sample/seq/epoch/rank) into `portal port` so the CLI can drive real
+   experiments (SPEC §3 known gap).
+5. **Cross-task converter reuse.** Save the `LatentToLoraConverter` as a reusable
+   artifact; train one converter over several task latents, hold one out. This is
+   the first real test of amortization/portability.
+6. **Converter output-head scaling.** The final dense layer emits *all* target
+   LoRA params at once (`hidden × total_lora_params`) — does not scale to large
+   models. Prototype layer-wise / factorized generation before scaling up.
+
+#### Test plan
+
+**CPU unit tests (local, landed — `uv run python -m pytest -q`, 27 passing):**
+- `test_data.py` — field precedence (`text`→`input`→…), instruction/response,
+  chat `messages`, and loud failure on unknown schemas.
+- `test_latent_mode.py` — `real` identity; `zero`; `random` deterministic &
+  differs; `shuffled` is a permutation.
+- `test_env.py` — manifest shape + JSON-serialisable + tracks key packages.
+- `test_artifacts.py::test_latent_records_runtime_but_hash_excludes_it` —
+  provenance recorded, content address unchanged.
+- `test_converter.py` — `functional_call` keeps the converter in the autograd
+  graph (regression guard for the detach bug).
+
+**Lambda GPU validation (next session — extend `examples/smolvm/port_e2e.py`):**
+- `ppl(real) < ppl(base)` — the ported adapter beats the unadapted target.
+- `ppl(real) ≈ ppl(zero|random|shuffled)?` — the decisive ablation. Want `real`
+  meaningfully better; if not, the latent is inert.
+- `ppl(port) vs ppl(baseline)` — record the recovery ratio (no accuracy claim
+  until task metrics land).
+- Determinism: fixed seed + pinned inputs → same eval within tolerance.
+- Loud-failure smoke: a dataset with no known text field raises
+  `DatasetSchemaError`; `convert` without `--cal-dataset` raises before download.
 
 ### Phase B — Single-VM integration (in progress — CUDA training validated)
 
@@ -211,10 +303,18 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 
 ## Immediate next steps
 
-1. **Step 8:** Scale Qwen → target (Gemma with `HF_TOKEN` or TinyLlama) for accuracy, not just pipeline smoke.
-2. **Upstream tracking:** smolvm #596 / #598 — drop manual shim install and pre-baked-image docs when PRs land.
-3. ~~**Fused SDPA** on real models~~ **Done** on Lambda (2026-07-13).
+1. **Phase A2 code (local, done):** dataset schema guard, required `--cal-dataset`,
+   runtime manifest, `--latent-mode` ablation, `portal baseline`. All CPU-unit-tested.
+2. **Phase A2 on Lambda (next several days):** run the latent-matters ablation
+   (`real` vs `zero|random|shuffled`) and the `portal baseline` vs `portal port`
+   comparison. This is the priority — it tells us whether the mechanism works.
+3. **Step 8:** Scale Qwen → target (Gemma with `HF_TOKEN` or TinyLlama) for
+   accuracy, not just pipeline smoke — after task metrics land.
+4. **Upstream tracking:** smolvm #596 / #598 — drop manual shim install and
+   pre-baked-image docs when PRs land.
 
 ---
-_Status: Phase B complete on smolvm v1.5.2 — real-model `portal port` + fused SDPA e2e (2026-07-13).
-Next: Gemma with HF auth, accuracy scaling, multi-GPU orchestration (Phase C)._
+_Status: Systems path (Phase B) complete on smolvm v1.5.2 — real-model `portal port`
++ fused SDPA e2e (2026-07-13). **The PorTAL mechanism itself is not yet validated**
+(latent may be inert; no measured baseline). Next: Phase A2 scientific validation on
+Lambda, then Gemma/accuracy scaling and multi-GPU orchestration (Phase C)._

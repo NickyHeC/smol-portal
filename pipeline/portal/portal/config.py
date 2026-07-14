@@ -90,6 +90,21 @@ class HypernetConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class LatentMode(StrEnum):
+    """Latent-ablation modes for the converter (see ROADMAP Phase A2).
+
+    Used to test whether the source task latent actually contributes: if
+    ``zero``/``random``/``shuffled`` reach the same target performance as
+    ``real`` after converter training, the converter is learning the task from
+    calibration data and ignoring the latent.
+    """
+
+    REAL = "real"
+    ZERO = "zero"
+    RANDOM = "random"
+    SHUFFLED = "shuffled"
+
+
 class ConverterConfig(BaseModel):
     """Config for the slim converter that projects a task latent into a target model."""
 
@@ -100,6 +115,7 @@ class ConverterConfig(BaseModel):
     hidden_dim: int = 512
     learning_rate: float = 1e-3
     num_epochs: int = 30
+    latent_mode: LatentMode = LatentMode.REAL
     seed: int = 42
 
 

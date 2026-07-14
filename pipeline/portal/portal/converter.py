@@ -25,8 +25,9 @@ from torch.func import functional_call
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from portal.artifacts import load_task_latent, save_adapter
-from portal.config import ConverterConfig, content_hash
+from portal.config import ConverterConfig, LatentMode, content_hash
 from portal.cuda import causal_lm_load_kwargs, configure_cuda_for_smolvm
+from portal.data import extract_text
 
 
 class LatentToLoraConverter(nn.Module):
@@ -55,6 +56,30 @@ def _get_lora_param_shapes(model: nn.Module) -> list[tuple[str, torch.Size]]:
     return shapes
 
 
+def apply_latent_mode(latent: torch.Tensor, mode: LatentMode, seed: int) -> torch.Tensor:
+    """Transform the task latent for ablation experiments.
+
+    ``real`` passes it through unchanged. The other modes replace or scramble
+    the latent so we can measure how much the source task information actually
+    matters to the converter. Deterministic given ``seed``.
+    """
+    if mode == LatentMode.REAL:
+        return latent
+    if mode == LatentMode.ZERO:
+        return torch.zeros_like(latent)
+
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    if mode == LatentMode.RANDOM:
+        noise = torch.randn(latent.shape, generator=generator, dtype=latent.dtype)
+        return noise.to(latent.device)
+    if mode == LatentMode.SHUFFLED:
+        flat = latent.flatten().cpu()
+        perm = torch.randperm(flat.numel(), generator=generator)
+        return flat[perm].reshape(latent.shape).to(latent.device)
+
+    raise ValueError(f"Unknown latent mode: {mode!r}")
+
+
 def convert_latent_to_adapter(
     latent_dir: Path,
     task_name: str,
@@ -71,7 +96,16 @@ def convert_latent_to_adapter(
     configure_cuda_for_smolvm()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    if config.calibration_dataset is None:
+        raise ValueError(
+            "ConverterConfig.calibration_dataset is required — pass --cal-dataset "
+            "(normally the task dataset). It previously fell back to the target "
+            "model id, which is not a dataset and silently loaded nothing useful. "
+            "`portal port` sets this for you from --dataset."
+        )
+
     task_latent, latent_meta = load_task_latent(latent_dir)
+    task_latent = apply_latent_mode(task_latent, config.latent_mode, seed=config.seed)
     latent_dim = task_latent.shape[0]
     task_latent = task_latent.to(device).unsqueeze(0)
 
@@ -98,12 +132,11 @@ def convert_latent_to_adapter(
     lora_shapes = _get_lora_param_shapes(peft_model)
     total_lora_params = sum(s.numel() for _, s in lora_shapes)
 
-    cal_dataset_name = config.calibration_dataset or config.target_model
-    ds = load_dataset(cal_dataset_name, split=config.calibration_split)
+    ds = load_dataset(config.calibration_dataset, split=config.calibration_split)
     ds = ds.select(range(min(config.calibration_samples, len(ds))))
 
     def tokenize(example: dict) -> dict:
-        text = example.get("text") or example.get("input", "")
+        text = extract_text(example)
         return tokenizer(text, truncation=True, max_length=512, padding="max_length")
 
     ds = ds.map(tokenize, batched=False, remove_columns=ds.column_names)
