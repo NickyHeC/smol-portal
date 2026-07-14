@@ -2,17 +2,33 @@
 
 ## Vision
 
-Run Ramp Labs' **PorTAL** fine-tuning process **securely** inside
-**smolvm microVMs** on one or more **local NVIDIA GPUs**.
+Run Ramp Labs' **PorTAL** **securely** inside **smolvm microVMs** on one or more
+**local NVIDIA GPUs**.
 
-smol-portal is the **PorTAL orchestration layer**: Python ML pipeline, Rust
-multi-GPU orchestrator, and worker Smolfiles/images. It depends on a
-CUDA-enabled smolvm build but does not own VMM, guest drivers, or GPU
-management code — that work lives in the [smolvm](https://github.com/smol-machines/smolvm) repo.
+smol-portal is the **secure-VM connector for PorTAL**: it runs Ramp's official
+implementation ([`portallib`](https://github.com/ramp-public/portallib)) as the
+**engine** inside CUDA-enabled smolvm microVMs, and adds the packaging, CLI/UX,
+artifact plumbing, and multi-GPU orchestration around it. It does **not** own the
+ML method (that's Ramp's `portallib`) nor the VMM / GPU remoting (that's
+[smolvm](https://github.com/smol-machines/smolvm)). Three layers, one system:
 
-**Guiding principle:** keep it simple (distributed-systems discipline). Every
-component should be independently testable, stateless where possible, and
-idempotent. Prefer boring, correct mechanisms over clever ones.
+```text
+portallib (ML engine — Ramp)  →  smol-portal (connector/orchestration)  →  smolvm (secure GPU infra)
+```
+
+**Guiding principle:** keep it simple (distributed-systems discipline). Own the
+seams, not the internals. Every component independently testable, stateless where
+possible, idempotent. Prefer boring, correct mechanisms over clever ones.
+
+> **Direction pivot (2026-07-14).** Ramp open-sourced `portallib` and its author
+> (Ben Geist) explicitly endorsed smol-portal wrapping it as the engine ("if you
+> want to use the repo I built that would be ideal"); it's expected feature-complete
+> by end of week and we have alpha access. So smol-portal **adopts `portallib` as
+> the engine** rather than maintaining a parallel ML reimplementation. Our
+> `pipeline/portal` ML code becomes a legacy fallback/reference until portallib is
+> released and confirmed to run under smolvm's CUDA constraints; then we thin the
+> CLI into an adapter over portallib. Our differentiator is the **secure-VM hosting
+> + orchestration**, not the recipe. See the connector phase below.
 
 ## Architecture
 
@@ -58,17 +74,18 @@ smol-portal/
 
 ## Phased plan
 
-### Phase A — PorTAL pipeline, bare metal (weeks) — in progress
+### Phase A — PorTAL pipeline, bare metal — ⚠️ SUPERSEDED by portallib adoption
 
-Implement PorTAL: hypernetwork → base-agnostic task latent → slim converter →
-eval, single GPU, bare metal on Spark (reference: HypeLoRA + PEFT).
-
-Reproduce headline result: port Qwen3→Gemma-3 recovering ~94–98% of LoRA
-accuracy at ~half the calibration data on a small task.
-
-Freeze CLI contracts + artifact formats (latents, adapters, eval JSON).
-
-**DoD:** `portal port --from qwen3 --to gemma3 --task X` works end-to-end.
+> **Superseded (2026-07-14).** This phase built our own reverse-engineered PorTAL
+> pipeline (hypernetwork → task latent → converter → eval) to reproduce the paper.
+> Ramp's official `portallib` makes reproducing the *method* ourselves unnecessary —
+> we adopt it as the engine instead (see the Connector phase). The reusable
+> **orchestration** pieces this phase produced (CLI shape, artifact/content-address
+> formats, `portal.cuda` constraints, dataset schema guard, runtime manifest, the
+> `portal port` sizing UX) are **retained** and carry over to the connector. The
+> ML internals (`hypernetwork.py`, `converter.py`, our latent/eval science) are kept
+> only as a legacy fallback until portallib is confirmed to run under smolvm CUDA.
+> Original goal (kept for history): reproduce Qwen3→Gemma-3 ~94–98% of LoRA lift.
 
 #### Implementation steps
 
@@ -154,93 +171,70 @@ variants (Qwen3-0.5B, Gemma-3-1B) for fast iteration, scale up on Spark.
 - Freeze CLI args, artifact formats, eval JSON schema.
 - Update this roadmap with results and any discovered constraints.
 
-### Phase A2 — Scientific validation (design the experiment that can disprove the claim)
+### Phase A2 — Own-pipeline scientific validation — ⚠️ DEMOTED (Ramp owns the science)
 
-The systems path is proven: `train → extract → convert → eval` completes on real
-models inside CUDA smolvm. What is **not** proven is the PorTAL *mechanism* — that
-the task latent is model-independent and that porting recovers most of a direct
-LoRA's accuracy at a fraction of the cost. Two structural facts make this the
-priority, not more infrastructure:
+> **Demoted (2026-07-14).** This phase was going to prove *our* reimplementation's
+> mechanism (is the latent model-independent? does porting recover direct-LoRA
+> accuracy?). With `portallib` adopted as the engine, **the science is Ramp's** —
+> we don't need to defend a reimplementation we're replacing. The "disprove our own
+> latent" experiments (latent-matters ablation, converter reuse, output-head
+> scaling) are **shelved**, not deleted; `portal baseline` and `--latent-mode`
+> remain in-tree but are no longer priorities.
+>
+> **Retained (host-any-engine, already landed + CPU-tested, 31 passing):**
+> `portal/data.py` dataset schema guard, `portal/env.py` runtime manifest,
+> `portal convert --cal-dataset` requirement, and the `portal port` sizing knobs.
+> These serve the connector regardless of engine.
+>
+> **What replaces the science track:** *hosting-fidelity* validation — run
+> `portallib`'s **own** `acc_norm` eval on the `portallib-tasks` suite and confirm
+> the numbers inside a smolvm VM match bare metal. That's our job (faithful secure
+> hosting), not reproducing the research. See the Connector phase.
 
-- **The latent may not matter.** The autoencoder is trained on a *single*
-  adapter vector (`hypernetwork.py`, `unsqueeze(0)`), and the converter sees one
-  *fixed* latent `z` every step. So the converter could be learning the task
-  directly from calibration data and ignoring the latent entirely.
-- **There is no measured comparison.** Eval reports perplexity only; there was
-  no direct-LoRA baseline and no task metric, so "94–98% of direct LoRA" has
-  nothing behind it in this repo.
+### Phase A3 — Connector: adopt portallib as the engine (ACTIVE)
 
-> **Guiding rule for this phase:** design runs that can *disprove* our own claim.
-> "It completed without error" is not "the mechanism worked."
+Make smol-portal run Ramp's `portallib` unmodified inside a smolvm CUDA microVM.
 
-> **Ground truth now exists.** Ramp published the official implementation,
-> [`portallib`](https://github.com/ramp-public/portallib), and the
-> [`portallib-tasks`](https://huggingface.co/datasets/RampPublic/portallib-tasks)
-> 14-task suite. Their validation metric is **`acc_norm`** (continuation log-prob
-> normalized by character length), *not* perplexity. Phase A2's task-metric work
-> should target `acc_norm` on that suite so our numbers are directly comparable,
-> and we should check our hypernetwork/converter assumptions against portallib
-> rather than the announcement alone. See `reference-material.md`.
+**This week (before portallib feature-completes — mostly no GPU):**
+1. **Worker image that installs `portallib`** (from the GitHub repo now; PyPI when
+   published) alongside pinned torch/transformers/peft, pre-baked so smolvm CUDA
+   staging interposes shims at pull time.
+2. **Draft API/feature feedback for Ben** (issue-ready) — done: see private
+   `smolvm-notes/portallib-feedback.md`. File as issues/PRs when his code lands.
+3. **Smoke harness** around one `portallib-tasks` task, ready to run the moment
+   the engine is available.
 
-#### Build plan
+**When portallib lands (end of week, per Ben):**
+4. Read it end-to-end; confirm the train/port/eval API + artifact shapes.
+5. Run one task **in-VM**; capture any smolvm-hostile ops (bf16, flash-attn,
+   `torch.compile`, multi-GPU) → file issues/PRs upstream (offer our `portal.cuda`
+   knobs as a PR).
+6. Thin `pipeline/portal`'s CLI into an **adapter over portallib**; keep our
+   artifact/content-address + orchestration layer on top. Retire our ML internals
+   once the hosted engine passes hosting-fidelity.
 
-**Landed now (local, no GPU — see PR / this branch):**
-- `portal/data.py` — explicit dataset text resolution + `DatasetSchemaError`;
-  wired into train/convert/eval. Unknown schemas now fail loudly instead of
-  training on empty strings.
-- `portal convert` — `--cal-dataset` is **required** (no more silent fallback to
-  the target-model id, which was never a dataset). `portal port` still sets it
-  from `--dataset` automatically.
-- `portal/env.py` — runtime provenance manifest (torch/transformers/peft/…
-  versions, git commit, platform) embedded in every artifact's metadata,
-  **excluded from the content hash** so reruns stay idempotent.
-- `--latent-mode {real|zero|random|shuffled}` on `portal convert` — the ablation
-  knob for the "does the latent matter?" experiment.
-- `portal baseline` — trains + evals a direct LoRA on the *target* model: the
-  comparison point the port result is measured against.
+**Hosting-fidelity DoD:** `portallib` runs a `portallib-tasks` task inside smolvm
+and reproduces its bare-metal `acc_norm` within tolerance.
 
-**Next (needs Lambda GPU — run in the next several days):**
-1. **Latent-matters ablation** (highest priority). Same task/target/calibration,
-   sweep `--latent-mode` over `real|zero|random|shuffled`. If post-training eval
-   is ~equal across modes, the converter is ignoring the latent → the
-   portability mechanism is not yet doing anything.
-2. **Baseline comparison.** `portal baseline` (direct LoRA on target) vs
-   `portal port` (ported adapter), same split/samples. Report the ratio.
-3. **Task-specific metrics.** Add accuracy/F1 (classification) / exact-match /
-   token-F1 to `portal eval` alongside perplexity; wire the labeled path. Only
-   then can any "% of direct LoRA" number be stated.
-4. **`portal port` sizing parity.** Fold `port_e2e.py`'s smoke knobs
-   (sample/seq/epoch/rank) into `portal port` so the CLI can drive real
-   experiments (SPEC §3 known gap).
-5. **Cross-task converter reuse.** Save the `LatentToLoraConverter` as a reusable
-   artifact; train one converter over several task latents, hold one out. This is
-   the first real test of amortization/portability.
-6. **Converter output-head scaling.** The final dense layer emits *all* target
-   LoRA params at once (`hidden × total_lora_params`) — does not scale to large
-   models. Prototype layer-wise / factorized generation before scaling up.
+#### GPU test plan (Lambda, runnable now — de-risks hosting ahead of the drop)
 
-#### Test plan
+Since portallib isn't out yet, today's GPU value is **re-validating our hosting
+substrate on the new smolvm and probing the ops portallib will need**:
 
-**CPU unit tests (local, landed — `uv run python -m pytest -q`, 27 passing):**
-- `test_data.py` — field precedence (`text`→`input`→…), instruction/response,
-  chat `messages`, and loud failure on unknown schemas.
-- `test_latent_mode.py` — `real` identity; `zero`; `random` deterministic &
-  differs; `shuffled` is a permutation.
-- `test_env.py` — manifest shape + JSON-serialisable + tracks key packages.
-- `test_artifacts.py::test_latent_records_runtime_but_hash_excludes_it` —
-  provenance recorded, content address unchanged.
-- `test_converter.py` — `functional_call` keeps the converter in the autograd
-  graph (regression guard for the detach bug).
+- **Rebuild CUDA shims to match smolvm (v1.6.0)** and re-run the CUDA gates +
+  `portal train` + `portal port` e2e (with the new CLI sizing knobs). Confirms the
+  version bump didn't regress hosting.
+- **Capability probe matrix** (what portallib may require, tested through the
+  remoted CUDA path): fp32 ✓ (known), **bf16**, **flash/mem-efficient SDPA**
+  (fused), **`torch.compile`**, **multi-GPU/NCCL**. Record pass/fail per op — this
+  directly seeds the "suggestions for Ben" and tells us what to force-off in the
+  worker image.
+- **Investigate `src/cuda_daemon.rs`** + the new upstream CUDA branches
+  (`cuda-independent-serving`, `cuda-shim-hygiene`, `cuda-vmresources`) — do they
+  change how we install/interpose shims? Note in `smolvm-notes/`.
 
-**Lambda GPU validation (next session — extend `examples/smolvm/port_e2e.py`):**
-- `ppl(real) < ppl(base)` — the ported adapter beats the unadapted target.
-- `ppl(real) ≈ ppl(zero|random|shuffled)?` — the decisive ablation. Want `real`
-  meaningfully better; if not, the latent is inert.
-- `ppl(port) vs ppl(baseline)` — record the recovery ratio (no accuracy claim
-  until task metrics land).
-- Determinism: fixed seed + pinned inputs → same eval within tolerance.
-- Loud-failure smoke: a dataset with no known text field raises
-  `DatasetSchemaError`; `convert` without `--cal-dataset` raises before download.
+Detailed runbook lives in `smolvm-notes/portal-reference-plan.md` +
+`examples/smolvm/lambda-instructions.md`.
 
 ### Phase B — Single-VM integration (in progress — CUDA training validated)
 
@@ -295,48 +289,55 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 
 | Risk | Mitigation |
 |---|---|
-| PorTAL recipe unreproducible (no public code) | Phase A validates bare-metal before VM integration |
-| Converter accuracy below target | Iterate on hypernetwork/converter architecture; compare against direct LoRA baseline |
-| smolvm CUDA not ready for Phase B | Phase A runs on bare metal independently |
+| ~~PorTAL recipe unreproducible~~ → **portallib released** | Adopt it as the engine; we own hosting, not the recipe |
+| portallib uses smolvm-hostile ops (bf16 / flash-attn / `torch.compile` / multi-GPU) | Probe on Lambda ahead of the drop; offer `portal.cuda` force-off knobs as an upstream PR; force-off in worker image |
+| portallib API/artifacts churn before v1 | We're an alpha user with author contact — track the API, keep the connector a thin adapter |
+| smolvm CUDA surface in flux (v1.6.0 + `cuda_daemon.rs` + rework branches) | Pin to a tag for each Lambda run; don't over-fit shim workarounds; re-validate per bump |
 | Multi-VM OOM on shared GPU | NVIDIA driver returns clean errors; orchestrator pins one job per GPU |
-| vsock latency on hot CUDA paths | Profile in Phase B; acceptable for training workloads |
+| vsock latency on hot CUDA paths | Profile during hosting validation; acceptable for training workloads |
 
-## Near-term direction (2026-07-14)
+## Near-term direction (2026-07-14) — connector-first, author-endorsed
 
-Ramp published the official reference — [`ramp-public/portallib`](https://github.com/ramp-public/portallib)
-(+ the `portallib-tasks` dataset). It reframes our focus:
+Ramp's PorTAL author (Ben Geist) confirmed the direction directly: he open-sourced
+[`portallib`](https://github.com/ramp-public/portallib), endorsed smol-portal
+wrapping it ("if you want to use the repo I built that would be ideal"), expects it
+feature-complete **by end of week**, and gave us alpha access + an open invitation to
+suggest improvements. So:
 
-- **Own the orchestration layer, not the ML recipe.** smol-portal's job is making
-  PorTAL **seamless to run inside smolvm** (packaging, CLI/UX, artifacts, multi-GPU)
-  — one coherent system across portallib (engine) ↔ smol-portal (orchestration) ↔
-  smolvm (infra). When portallib's code lands, adopt it as the engine rather than
-  maintaining a parallel reimplementation.
-- **Interim (portallib is README-only): test + document.** Keep validating the
-  current pipeline on Lambda and record findings; don't over-invest in ML
-  correctness we'll inherit.
-- **Reactive to releases:** track portallib daily (see the daily-startup rule);
-  when it ships code, compare and **file issues/PRs upstream to portallib** where
-  useful — same contribution posture we use for smolvm.
+- **Adopt `portallib` as the engine.** smol-portal = the **secure-VM connector**:
+  packaging, CLI/UX, artifacts, `portal.cuda` constraints, multi-GPU. Don't
+  reimplement the ML.
+- **Own hosting fidelity, not the science.** Our validation is "portallib's own
+  `acc_norm` on `portallib-tasks` matches inside a smolvm VM vs. bare metal," not
+  reproducing the paper.
+- **Contribute upstream.** Ben asked for feedback — file issue-ready API/hosting
+  suggestions (drafted in `smolvm-notes/portallib-feedback.md`) and offer our
+  constrained-backend `portal.cuda` knobs as a PR.
+- **Keep our `pipeline/portal` as legacy fallback** until portallib is confirmed to
+  run under smolvm CUDA; then thin the CLI into an adapter over it.
 
 ## Immediate next steps
 
-1. **Orchestration UX (local, ongoing):** ✅ `portal port` now exposes per-stage
-   sizing knobs (samples/seq/batch/rank/epochs/latent) — real & smoke runs no
-   longer need the `port_e2e.py` driver inside the VM. Next: smoother
-   `machine run` wrapping and clearer in-VM errors.
-2. **Phase A2 code (local, done):** dataset schema guard, required `--cal-dataset`,
-   runtime manifest, `--latent-mode` ablation, `portal baseline`. CPU-unit-tested.
-3. **Phase A2 on Lambda (next several days):** latent-matters ablation
-   (`real` vs `zero|random|shuffled`) + `portal baseline` vs `portal port`.
-   Adopt portallib's `acc_norm` metric + `portallib-tasks` so numbers are
-   comparable to ground truth.
-4. **When portallib code lands:** read it end-to-end, decide wrap-vs-keep, and
-   align our pipeline/metrics; open issues/PRs where we find gaps.
-5. **Upstream tracking:** smolvm now at **v1.6.0** — rebuild shims to match before
-   the next Lambda run; #596 / #598 workarounds drop when those PRs land.
+1. **This week — connector prep (local, no GPU):** worker image that installs
+   `portallib` (pinned deps, pre-baked); a `portallib-tasks` smoke harness;
+   finalize the feedback list for Ben.
+2. **Today — Lambda GPU (de-risk hosting on new smolvm):** rebuild shims for
+   **v1.6.0**, re-run CUDA gates + `portal port` e2e, and run the **capability
+   probe matrix** (bf16 / flash-fused SDPA / `torch.compile` / multi-GPU) — results
+   feed the Ben feedback + worker-image force-off flags. (Phase A3 GPU test plan.)
+3. **When portallib lands (end of week):** read it, run one task in-VM, capture
+   smolvm-hostile ops, file issues/PRs, and start the CLI-adapter-over-portallib.
+4. **Retained/landed (host-any-engine, CPU-tested):** `portal port` sizing knobs,
+   dataset schema guard, runtime manifest, `--cal-dataset` requirement.
+5. **smolvm tracking:** upstream at **v1.6.0-11** with active CUDA rework
+   (`cuda-independent-serving`, `cuda-shim-hygiene`, `cuda-vmresources`); local
+   `main` diverged by our `.cursor` commit — rebase or build from the `v1.6.0` tag
+   before the Lambda run. Don't over-fit shim workarounds while the surface churns.
 
 ---
-_Status: Systems path (Phase B) complete on smolvm v1.5.2 — real-model `portal port`
-+ fused SDPA e2e (2026-07-13). **The PorTAL mechanism itself is not yet validated**
-(latent may be inert; no measured baseline). Next: Phase A2 scientific validation on
-Lambda, then Gemma/accuracy scaling and multi-GPU orchestration (Phase C)._
+_Status (2026-07-14): pivoted to **connector-first** — adopt Ramp's `portallib` as
+the engine (author-endorsed), smol-portal owns secure-VM hosting + orchestration.
+Systems/hosting path validated on smolvm v1.5.2 (real-model `portal port` e2e,
+2026-07-13); smolvm now v1.6.0 (re-validate). Own-pipeline science (Phase A/A2)
+superseded/demoted. Next: connector prep + Lambda hosting de-risk, then adopt
+portallib when it drops (end of week)._
