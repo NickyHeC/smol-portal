@@ -64,6 +64,12 @@ python3 examples/smolvm/smoke_portallib.py --task boolq --max-samples 8 --dry-ru
 
 Smolfile: [`portallib.smolfile`](./portallib.smolfile).
 
+### Capability probe (Lambda afternoon)
+
+[`capability_probe.py`](./capability_probe.py) records pass/fail for fp32, bf16,
+fused SDPA, `torch.compile`, and multi-GPU through remoted CUDA. Copy-paste host
+wrapper + results table: [`lambda-instructions.md`](./lambda-instructions.md) §9.
+
 ## CUDA shims (release tarball gap — [#596](https://github.com/smol-machines/smolvm/issues/596))
 
 Official smolvm Linux tarballs may omit shims from `agent-rootfs`. **Shim git tag must

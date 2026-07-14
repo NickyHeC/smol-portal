@@ -10,10 +10,15 @@ below on each new instance.
 
 **Last validated:** 2026-07-13 — real-model PorTAL + fused SDPA full `portal port` e2e on smolvm **v1.5.2** (cloud A10, ~1 h).
 
+**Today’s target (2026-07-14 afternoon):** host on **smolvm v1.6.0** — see **§9** (shim rebuild,
+CUDA gates, `portal` e2e with CLI sizing knobs, capability probe matrix). Historical §1–§5
+blocks still say `1.5.2`; for this session set `VER=1.6.0` everywhere.
+
 | Resource | Path |
 |----------|------|
 | SSH key | `~/.ssh/gpu-box.pem` (use your own) |
 | Session log (PorTAL) | `smol-portal/memory.md` |
+| Capability probe | [`capability_probe.py`](./capability_probe.py) |
 
 ---
 
@@ -64,8 +69,9 @@ source "$HOME/.cargo/env"
 rustc --version
 
 # --- smolvm release tarball ---
+# 2026-07-14 afternoon: VER=1.6.0 (shim tag MUST match). Prior validated: 1.5.2.
 cd ~
-VER=1.5.2
+VER=1.6.0
 curl -L --progress-bar -o smolvm.tar.gz \
   "https://github.com/smol-machines/smolvm/releases/download/v${VER}/smolvm-${VER}-linux-x86_64.tar.gz"
 tar xzf smolvm.tar.gz
@@ -550,6 +556,119 @@ scp -i ~/.ssh/gpu-box.pem ubuntu@<IP>:/tmp/port-artifacts/ ./port-artifacts/
 
 Terminate the Lambda instance when done. Next session = new IP, bare box, re-run §1
 (or §1 minus docker if you scp `portal-cuda.tar`).
+
+---
+
+## 9. Session plan — 2026-07-14 afternoon (smolvm v1.6.0 hosting de-risk)
+
+**Goal:** confirm the PorTAL hosting substrate still works after the v1.5.2 → v1.6.0 bump,
+and record which CUDA ops portallib may need (feeds Ben feedback + worker force-offs).
+Do **not** chase own-pipeline science (Phase A2 demoted).
+
+**Time budget (A10, fresh box):** ~60–90 min bootstrap + gates; ~30–45 min e2e; ~20 min probes.
+
+### Order of battle
+
+| # | Step | Success signal | Abort if |
+|---|------|----------------|----------|
+| 0 | Launch box, SSH, §1 bootstrap with `VER=1.6.0` | `smolvm --version` ≈ 1.6.0; shims present; `portal-cuda.tar` built | no KVM / no GPU |
+| 1 | §4 A–C CUDA gates | `cuda: True`; libcudart ≈ 622–800 KB; `vsock ok` | `cuda: False` → shim tag skew / rebuild |
+| 2 | §4 D `gpu_loopback` at `v1.6.0` | host CUDA example OK | host driver broken |
+| 3 | §5a tiny `portal train` (math SDPA) | 8/8 steps, adapter saved | train/backward fail |
+| 4 | `portal port` smoke via **CLI sizing knobs** (below) | `port` completes; finite eval | convert/eval crash |
+| 5 | Fused path: `-e PORTAL_SKIP_CUDA_SMOLVM=1` + §5a or §5d | train / `backward ok` | fused broken on 1.6.0 |
+| 6 | [`capability_probe.py`](./capability_probe.py) matrix | JSON report; note each FAIL | — (record, don’t block) |
+| 7 | Optional: §5e/§5f real Qwen→TinyLlama if time | `port e2e ok` | OOM / time |
+| 8 | Log results → private notes; distill public `memory.md` | — | — |
+
+### 9a — Bootstrap delta (`VER=1.6.0`)
+
+Same as §1, but:
+
+```bash
+VER=1.6.0
+# tarball + git checkout v${VER} + cargo build shims + copy into agent-rootfs
+# Worker image: still Dockerfile.portal-cuda → ~/portal-cuda.tar (legacy engine for this session)
+# Optional deps-only portallib image (no engine yet):
+#   sudo docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+#     --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
+```
+
+Checklist replacements for §3:
+
+```text
+~/smolvm-1.6.0-linux-x86_64/smolvm --version
+cd ~/smolvm && git describe --tags --always   # expect v1.6.0
+```
+
+### 9b — `portal port` smoke (CLI knobs — preferred over §5c inline Python)
+
+```bash
+cd ~/smolvm-1.6.0-linux-x86_64
+PORTAL_ZIP="https://github.com/OWNER/smol-portal/archive/refs/heads/main.zip#subdirectory=pipeline/portal"
+
+./smolvm machine run --net --cuda --mem 16384 \
+  -e HF_HOME=/tmp/hf \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+  --image ~/portal-cuda.tar -- \
+  sh -c "pip install -q \"portal @ ${PORTAL_ZIP}\" \
+    typer rich pydantic safetensors 'datasets>=3.0,<4' accelerate \
+    'transformers>=4.45,<4.52' 'peft>=0.14,<0.18' && \
+  portal port \
+    --from hf-internal-testing/tiny-random-LlamaForCausalLM \
+    --to hf-internal-testing/tiny-random-LlamaForCausalLM \
+    --task port-smoke160 \
+    --dataset stanfordnlp/imdb \
+    --max-samples 8 --max-seq-length 64 --batch-size 1 --rank 4 \
+    --train-epochs 1 --extract-epochs 10 --convert-epochs 5 \
+    --cal-samples 8 --latent-dim 64 --hidden-dim 128 \
+    --output-dir /tmp/artifacts"
+```
+
+**Success:** command exits 0; artifacts under `/tmp/artifacts/port-smoke160/`. (Guest is
+ephemeral — read metrics from stdout or copy out before exit.)
+
+Fused variant: add `-e PORTAL_SKIP_CUDA_SMOLVM=1` and change `--task port-smoke160-fused`.
+
+### 9c — Capability probe matrix
+
+Copy the script into the guest (ephemeral `machine run` has no repo mount unless you
+add a volume). Easiest: pip-install portal (pulls nothing for this script) **or** curl
+the raw file, **or** mount the checkout:
+
+```bash
+cd ~/smolvm-1.6.0-linux-x86_64
+
+# If smol-portal is cloned on the host (`-v` = HOST:GUEST[:ro]):
+./smolvm machine run --net --cuda --mem 16384 \
+  -e HF_HOME=/tmp/hf \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+  --image ~/portal-cuda.tar \
+  -v ~/smol-portal:/workspace/smol-portal:ro -- \
+  sh -c 'pip install -q transformers accelerate && \
+    python3 /workspace/smol-portal/examples/smolvm/capability_probe.py \
+      --json-out /tmp/capability_probe.json; \
+    cat /tmp/capability_probe.json'
+```
+
+No host mount? `curl -fsSL` the raw `capability_probe.py` from your fork into `/tmp` and run it.
+
+| Probe | What it means for portallib hosting |
+|-------|-------------------------------------|
+| `fp32` | Baseline remoting path (must PASS) |
+| `bf16` | If FAIL → force fp32 / dtype knob (feedback Tier 2) |
+| `fused_sdpa` | If FAIL on 1.6.0 → keep math SDPA default; re-open/trace |
+| `torch_compile` | If FAIL → force-disable compile in worker / upstream knob |
+| `multi_gpu` | `device_count` + NCCL note; `gpu_1x_a10` → expect skip |
+
+Paste the JSON into the private session card (`smolvm-notes/`).
+
+### 9d — After the box (same day)
+
+1. Fill pass/fail table in private notes; update `portallib-feedback.md` Tier 2 with evidence.
+2. Distill public summary into `memory.md` + bump “Last validated” here if e2e PASS.
+3. If v1.6.0 changes the working minimum, update `SPEC.md` / README “≥ …” line.
+4. Skim `src/cuda_daemon.rs` notes only if shim install path looked different (optional).
 
 ---
 
