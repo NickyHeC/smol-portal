@@ -5,6 +5,24 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-14 (afternoon pickup) — Connector prep: portallib worker image + smoke
+
+- **Daily-startup:** smolvm `main` == `upstream/main` at **v1.6.0-11** (0/0, pristine).
+  `portallib` still README-only; issue #1 open (no code drop). Private watch logs updated.
+- **ROADMAP connector-first edits** were already on `main` (`9818a19`); corrected the stale
+  “main diverged” note.
+- **A.1 Worker image (local, no Docker on this Mac):**
+  `examples/smolvm/Dockerfile.portallib-cuda` pre-bakes torch cu124 + pinned
+  transformers/peft/datasets/accelerate; installs `portallib` from GitHub via
+  `PORTALLIB_SPEC` (`INSTALL_PORTALLIB=0` for deps-only until #1 merges). Plus
+  `portallib.smolfile`.
+- **A.2 Smoke harness:** `examples/smolvm/smoke_portallib.py` — one
+  `RampPublic/portallib-tasks` task (`boolq`), discovery + `--dry-run`; argv wires
+  when their CLI lands.
+- **A.3 Ben feedback:** refreshed in private `portallib-feedback.md` (still hold filing).
+- **Next:** Lambda shim rebuild @ v1.6.0 + capability matrix; full image build when
+  portallib is installable.
+
 ## 2026-07-14 (later) — Direction: orchestration UX; portallib reactive; smolvm v1.6.0
 
 - **Strategy set (user):** focus smol-portal on the **orchestration layer** —

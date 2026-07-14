@@ -4,6 +4,12 @@ Development log and runbook for GPU training through smolvm's CUDA remoting stac
 **Validated end-to-end on a cloud A10 (2026-07-13), including real-model
 Qwen3-0.6B → TinyLlama `portal port`.** See also `memory.md` (repo root).
 
+**Direction (2026-07-14):** smol-portal is the **secure-VM connector** for Ramp's
+[`portallib`](https://github.com/ramp-public/portallib). Prefer the **portallib
+worker image** below once that package is installable. The legacy `portal-cuda`
+image + `pipeline/portal` ML remain the fallback until portallib is confirmed
+under smolvm CUDA (see [ROADMAP.md](../../ROADMAP.md) Phase A3).
+
 **Cloud GPU quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap,
 CUDA verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. Replace
 `OWNER` with your `smol-portal` fork owner and use your own SSH key for the box.
@@ -12,9 +18,10 @@ CUDA verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. 
 
 | What | Detail |
 |------|--------|
-| **Minimum smolvm** | **v1.5.2** Linux x86_64 + shims built from matching upstream git tag |
+| **Minimum smolvm** | **v1.5.2** Linux x86_64 + shims built from matching upstream git tag (re-validate on **v1.6.0**) |
 | GPU host | Lambda `gpu_1x_a10`, driver 580.x, `/dev/kvm` |
-| Worker image | `portal-cuda.tar` (this Dockerfile) |
+| Worker image (connector) | `portallib-cuda.tar` ([`Dockerfile.portallib-cuda`](./Dockerfile.portallib-cuda)) |
+| Worker image (legacy) | `portal-cuda.tar` ([`Dockerfile.portal-cuda`](./Dockerfile.portal-cuda)) |
 | `portal train` | ✅ smoke + **Qwen3-0.6B** real (math SDPA) |
 | `portal port` e2e | ✅ **Qwen → TinyLlama** (`port e2e ok`); Gemma needs `HF_TOKEN` |
 | Fused SDPA (real models) | ✅ train + **full port e2e** (`PORTAL_SKIP_CUDA_SMOLVM=1`) |
@@ -30,9 +37,32 @@ staging paths.
 **Build on a machine with Docker:**
 
 ```bash
+# Connector path (portallib engine) — full image once ramp-public/portallib#1 merges:
+docker build -f examples/smolvm/Dockerfile.portallib-cuda -t portallib-cuda .
+docker save portallib-cuda -o portallib-cuda.tar
+
+# Deps-only (works today while portallib is still README-only):
+docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+  --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
+docker save portallib-cuda -o portallib-cuda.tar
+
+# Legacy fallback (our pipeline/portal ML):
 docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda .
 docker save portal-cuda -o portal-cuda.tar
 ```
+
+### portallib smoke harness
+
+[`smoke_portallib.py`](./smoke_portallib.py) loads one task from
+`RampPublic/portallib-tasks` and probes the installed `portallib` entry points.
+Use `--dry-run` before the alpha merges (dataset + discovery only):
+
+```bash
+# Inside the VM (image must have datasets; net=true for HF):
+python3 examples/smolvm/smoke_portallib.py --task boolq --max-samples 8 --dry-run
+```
+
+Smolfile: [`portallib.smolfile`](./portallib.smolfile).
 
 ## CUDA shims (release tarball gap — [#596](https://github.com/smol-machines/smolvm/issues/596))
 
@@ -119,31 +149,18 @@ python3 examples/smolvm/port_e2e.py \
 For agent-driven use and the full contract, see [`AGENTS.md`](../../AGENTS.md)
 and [`SPEC.md`](../../SPEC.md).
 
-## Next Lambda session — Phase A2 scientific validation
+## Next Lambda session — hosting de-risk (Phase A3)
 
-The pipeline runs; the next runs must test whether the *mechanism* works (see
-[ROADMAP.md](../../ROADMAP.md) Phase A2). Priority order:
+Own-pipeline science (Phase A2) is demoted; next GPU work validates the **hosting
+substrate** ahead of the portallib drop (detail in private notes):
 
-1. **Latent-matters ablation** (most informative). Same task/target/calibration,
-   convert once per `--latent-mode`, eval each:
-
-   ```bash
-   for mode in real zero random shuffled; do
-     portal convert -l <latent-dir> -t <target> --task imdb-port \
-       --cal-dataset stanfordnlp/imdb --latent-mode "$mode" -o /tmp/abl-$mode
-     portal eval -a /tmp/abl-$mode/imdb-port/target_lora_* -m <target> \
-       -t imdb-port -d stanfordnlp/imdb
-   done
-   ```
-
-   Want `real` perplexity **meaningfully below** `zero|random|shuffled`. If they
-   tie, the converter is ignoring the latent — the port mechanism is inert.
-2. **Baseline vs port.** `portal baseline -m <target> -t <task> -d <dataset>`
-   then compare its `eval_results.json` perplexity to a `portal port` run on the
-   same split/samples. Record the recovery ratio (no accuracy claim until
-   task-specific metrics land).
-3. `port_e2e.py` still exposes the smoke-sizing knobs `portal port` lacks; use it
-   until those fold into the CLI.
+1. Rebuild CUDA shims for **smolvm v1.6.0**; re-run §4 CUDA gates.
+2. Re-run legacy `portal train` + `portal port` e2e on v1.6.0 (CLI sizing knobs).
+3. Capability probe matrix through remoted CUDA: bf16, fused SDPA, `torch.compile`,
+   multi-GPU — results feed portallib force-offs + Ben feedback Tier 2.
+4. When portallib is installable: build full `portallib-cuda.tar`, run
+   `smoke_portallib.py` on one `portallib-tasks` task, compare in-VM vs bare-metal
+   `acc_norm` (hosting fidelity).
 
 ## SDPA / #597 history
 

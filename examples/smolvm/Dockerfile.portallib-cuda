@@ -1,0 +1,56 @@
+# Pre-bake pip torch + portallib so smolvm auto-staging can overlay NVIDIA wheel
+# libs at image pull (smolvm #598). Companion to Dockerfile.portal-cuda (legacy
+# portal ML); this image targets Ramp's portallib engine.
+#
+# Build (full — requires installable portallib, i.e. ramp-public/portallib #1 merged):
+#   docker build -f examples/smolvm/Dockerfile.portallib-cuda -t portallib-cuda .
+#   docker save portallib-cuda -o portallib-cuda.tar
+#
+# Deps-only (works today while portallib is still README-only):
+#   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+#     --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
+#
+# When PyPI publishes:
+#   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+#     --build-arg PORTALLIB_SPEC='portallib==0.1.0' -t portallib-cuda .
+#
+# Pin a branch/commit once the package exists:
+#   --build-arg PORTALLIB_SPEC='git+https://github.com/ramp-public/portallib.git@<ref>'
+
+FROM python:3.11-slim-bookworm
+
+# git is needed for PORTALLIB_SPEC=git+https://… (slim image has none).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Torch first so site-packages/nvidia/ exists when smolvm pulls the image.
+RUN pip install --no-cache-dir torch \
+    --index-url https://download.pytorch.org/whl/cu124
+
+# Same HF ranges as pipeline/portal (validated under smolvm CUDA remoting).
+RUN pip install --no-cache-dir \
+    "transformers>=4.45,<4.52" \
+    "peft>=0.14,<0.18" \
+    "datasets>=3.0,<4" \
+    "accelerate>=1.0,<2" \
+    "safetensors>=0.4" \
+    "typer>=0.15" \
+    "rich>=13.0" \
+    "pydantic>=2.0"
+
+# Engine. Default = GitHub until PyPI; override with PORTALLIB_SPEC.
+ARG PORTALLIB_SPEC="git+https://github.com/ramp-public/portallib.git"
+ARG INSTALL_PORTALLIB=1
+RUN if [ "${INSTALL_PORTALLIB}" = "1" ]; then \
+      pip install --no-cache-dir "${PORTALLIB_SPEC}"; \
+    else \
+      echo "INSTALL_PORTALLIB=0 — baking torch/HF stack only; install portallib later."; \
+    fi
+
+# Hosting defaults for constrained CUDA remoting (smolvm). Override to probe fused
+# paths: PORTAL_SKIP_CUDA_SMOLVM=1. Force-offs may grow after the Lambda capability
+# matrix (bf16 / flash SDPA / torch.compile / multi-GPU).
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+    HF_HOME=/tmp/hf \
+    PORTALLIB_HOST=smolvm

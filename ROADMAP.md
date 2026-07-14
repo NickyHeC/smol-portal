@@ -331,8 +331,9 @@ suggest improvements. So:
    dataset schema guard, runtime manifest, `--cal-dataset` requirement.
 5. **smolvm tracking:** upstream at **v1.6.0-11** with active CUDA rework
    (`cuda-independent-serving`, `cuda-shim-hygiene`, `cuda-vmresources`); local
-   `main` diverged by our `.cursor` commit — rebase or build from the `v1.6.0` tag
-   before the Lambda run. Don't over-fit shim workarounds while the surface churns.
+   `main` == `upstream/main` (pristine mirror as of 2026-07-14 afternoon). Build
+   shims from the **`v1.6.0`** tag before the Lambda run. Don't over-fit shim
+   workarounds while the surface churns.
 
 ---
 _Status (2026-07-14): pivoted to **connector-first** — adopt Ramp's `portallib` as

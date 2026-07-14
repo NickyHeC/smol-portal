@@ -1,0 +1,35 @@
+# portallib worker on smolvm with CUDA remoting (connector path).
+#
+# Prerequisites (host):
+#   1. portallib-cuda.tar — see Dockerfile.portallib-cuda header for build/save
+#   2. CUDA shims in smolvm agent-rootfs matching the release tag (see README.md)
+#   3. Installable portallib in the image (INSTALL_PORTALLIB=1) or pip at run time
+#
+# Usage:
+#   smolvm machine run --net --cuda --mem 16384 \
+#     -s examples/smolvm/portallib.smolfile -- \
+#     python3 /workspace/examples/smolvm/smoke_portallib.py --dry-run
+#
+# Mount the smol-portal checkout (or copy smoke_portallib.py into the guest)
+# so the harness is visible. Ephemeral runs discard /tmp on exit.
+
+image = "./portallib-cuda.tar"
+cuda = true
+net = true
+cpus = 4
+memory = 16384
+
+env = [
+  "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False",
+  "HF_HOME=/tmp/hf",
+  "PORTALLIB_HOST=smolvm",
+]
+
+[dev]
+volumes = [
+  "./artifacts:/workspace/artifacts",
+  ".:/workspace/smol-portal",
+]
+
+[secrets]
+HF_TOKEN = { from_env = "HF_TOKEN" }
