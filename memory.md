@@ -5,6 +5,36 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-15 — Track A Lambda: smolvm v1.6.0 hosting de-risk (A10)
+
+- **Box:** Lambda Ubuntu 22.04 / glibc 2.35 / A10. Bootstrap `VER=1.6.0` + matching CUDA
+  shims + `portal-cuda.tar` (NickyHeC/smol-portal `main`).
+- **Blocker → workaround:** stock v1.6.0 `lib/libkrun.so` requires **GLIBC_2.39**
+  (`machine run` fails to boot). Same failure class as in-tree `build-libkrun.yml`
+  (v1.2.0 note). Rebuilt on-box with `SKIP_LIBKRUNFW=1 GPU=1 ./scripts/build-libkrun-linux.sh`
+  → floor **2.34**; replaced release lib. **Upstream:**
+  [smol-machines/smolvm#636](https://github.com/smol-machines/smolvm/issues/636).
+- **Hosting gates (§4):** PASS — `cuda: True`, libcudart shim ~901 KB, vsock,
+  `gpu_loopback` (`GPU-VERIFY-OK` A10).
+- **PorTAL smoke:** PASS tiny `portal train`; PASS `portal port` CLI sizing knobs
+  (tiny→tiny); PASS fused SDPA `loss.backward()`.
+- **Capability probe (through remoted CUDA):**
+  - fp32 / bf16 / fused SDPA — **PASS**
+  - multi-GPU — skip (1× A10)
+  - `torch.compile`:
+    - FAIL in stock slim image (no `CC`)
+    - FAIL with gcc only — linker `cannot find -lcuda` (staging has `libcuda.so.1`,
+      not unversioned `libcuda.so` that Triton `-lcuda` needs)
+    - **PASS** simple `nn.Module` after `ln -s libcuda.so.1 → libcuda.so` + gcc
+    - HF CausalLM + compile still **FAIL** (`NameError: torch` inside dynamo /
+      transformers wrapping) — treat HF+compile as unsupported for now
+- **Implications:** worker images that may run `torch.compile` need **gcc** and an
+  unversioned `libcuda.so` link (or staging should install it). Keep compile
+  force-off for portallib until HF path is green. Do **not** bump “min smolvm” to
+  1.6.0 for Ubuntu 22.04 users until #636 ships a fixed tarball (1.5.2 still
+  safest stock release on 22.04).
+- **Skipped:** real Qwen→TinyLlama (time / Track A goal was hosting + probe).
+
 ## 2026-07-14 (afternoon pickup) — Connector prep: portallib worker image + smoke
 
 - **Daily-startup:** smolvm `main` == `upstream/main` at **v1.6.0-11** (0/0, pristine).

@@ -18,6 +18,10 @@ Probes (in order):
   2. bf16 load + one train step
   3. fused (flash/mem-efficient) SDPA forward+backward
   4. torch.compile on a tiny model (one step)
+     Caveats (2026-07-15): needs a C compiler in the guest; Inductor/Triton also
+     link ``-lcuda`` and fail if only ``libcuda.so.1`` is staged — add
+     ``ln -s libcuda.so.1 …/libcuda.so``. Simple ``nn.Module`` then PASSes through
+     remoting; HF CausalLM+compile may still fail for unrelated dynamo reasons.
   5. multi-GPU visibility + optional NCCL init (skipped if device_count < 2)
 """
 

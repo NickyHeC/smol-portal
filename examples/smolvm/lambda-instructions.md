@@ -8,11 +8,14 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-13 — real-model PorTAL + fused SDPA full `portal port` e2e on smolvm **v1.5.2** (cloud A10, ~1 h).
+**Last validated:** 2026-07-15 — hosting de-risk on smolvm **v1.6.0** (cloud A10),
+**after** rebuilding release `libkrun.so` for glibc ≤2.35 (stock v1.6.0 tarball is
+broken on Ubuntu 22.04 — see [#636](https://github.com/smol-machines/smolvm/issues/636)
+and §9e). Prior full real-model PorTAL e2e: 2026-07-13 on **v1.5.2**.
 
-**Today’s target (2026-07-14 afternoon):** host on **smolvm v1.6.0** — see **§9** (shim rebuild,
-CUDA gates, `portal` e2e with CLI sizing knobs, capability probe matrix). Historical §1–§5
-blocks still say `1.5.2`; for this session set `VER=1.6.0` everywhere.
+**Today’s target (2026-07-14/15):** host on **smolvm v1.6.0** — see **§9**. Historical §1–§5
+blocks may still say `1.5.2`; for this session set `VER=1.6.0` everywhere **and**
+apply the §9e libkrun rebuild on Ubuntu 22.04 hosts.
 
 | Resource | Path |
 |----------|------|
@@ -669,6 +672,52 @@ Paste the JSON into the private session card (`smolvm-notes/`).
 2. Distill public summary into `memory.md` + bump “Last validated” here if e2e PASS.
 3. If v1.6.0 changes the working minimum, update `SPEC.md` / README “≥ …” line.
 4. Skim `src/cuda_daemon.rs` notes only if shim install path looked different (optional).
+
+### 9e — Required on Ubuntu 22.04: rebuild v1.6.0 `libkrun.so` (GLIBC_2.39)
+
+Stock `smolvm-1.6.0-linux-x86_64.tar.gz` ships `lib/libkrun.so` with max symbol
+**GLIBC_2.39**. Ubuntu 22.04 hosts (glibc 2.35) fail at `machine run` boot:
+
+```text
+version `GLIBC_2.39' not found (required by .../lib/libkrun.so)
+```
+
+Tracked upstream: [#636](https://github.com/smol-machines/smolvm/issues/636).
+`v1.5.2` release libkrun maxes at **2.34** and still boots on 22.04.
+
+**Workaround (run once per box after §1 tarball extract):**
+
+```bash
+cd ~/smolvm   # git checkout v1.6.0
+# Prefer HTTPS — Lambda often has no GitHub SSH key:
+sed -i 's|git@github.com:|https://github.com/|g' .gitmodules
+git submodule sync && git submodule update --init libkrun
+sudo apt-get install -y git-lfs && git lfs install && git lfs pull
+
+SKIP_LIBKRUNFW=1 GPU=1 ./scripts/build-libkrun-linux.sh
+# expect: objdump -T lib/linux-x86_64/libkrun.so | … | sort -V | tail -1  →  2.34
+
+REL=~/smolvm-1.6.0-linux-x86_64
+cp -a "$REL/lib/libkrun.so" "$REL/lib/libkrun.so.broken-glibc239"
+cp -a lib/linux-x86_64/libkrun.so "$REL/lib/libkrun.so"
+cp -a lib/linux-x86_64/libkrun.so.2.0.0 "$REL/lib/" 2>/dev/null || true
+ln -sfn libkrun.so "$REL/lib/libkrun.so.2"
+```
+
+Then re-run §4A (`cuda: True`).
+
+### 9f — Capability probe results (2026-07-15, v1.6.0 + rebuilt libkrun)
+
+| Probe | Result | Notes |
+|-------|--------|-------|
+| fp32 | PASS | |
+| bf16 | PASS | |
+| fused_sdpa | PASS | |
+| torch_compile | CONDITIONAL | Needs **gcc** in guest + unversioned **`libcuda.so`** (`ln -s libcuda.so.1`). Simple `nn.Module` compile+bwd **PASS**. HF CausalLM+compile still FAIL (dynamo/`NameError`). Stock slim image has neither gcc nor `libcuda.so`. |
+| multi_gpu | SKIP | 1× A10 |
+
+Worker-image takeaway: if portallib may use `torch.compile`, bake `build-essential` and
+ensure `-lcuda` resolves (symlink or staging change). Until then force compile off.
 
 ---
 

@@ -18,7 +18,7 @@ CUDA verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. 
 
 | What | Detail |
 |------|--------|
-| **Minimum smolvm** | **v1.5.2** Linux x86_64 + shims built from matching upstream git tag (re-validate on **v1.6.0**) |
+| **Minimum smolvm** | **v1.5.2** Linux x86_64 + shims built from matching upstream git tag. **v1.6.0** hosting validated 2026-07-15 **only after** rebuilding release `libkrun.so` for glibc ≤2.35 on Ubuntu 22.04 ([#636](https://github.com/smol-machines/smolvm/issues/636)); stock v1.6.0 tarball does not boot on 22.04. |
 | GPU host | Lambda `gpu_1x_a10`, driver 580.x, `/dev/kvm` |
 | Worker image (connector) | `portallib-cuda.tar` ([`Dockerfile.portallib-cuda`](./Dockerfile.portallib-cuda)) |
 | Worker image (legacy) | `portal-cuda.tar` ([`Dockerfile.portal-cuda`](./Dockerfile.portal-cuda)) |
@@ -69,6 +69,10 @@ Smolfile: [`portallib.smolfile`](./portallib.smolfile).
 [`capability_probe.py`](./capability_probe.py) records pass/fail for fp32, bf16,
 fused SDPA, `torch.compile`, and multi-GPU through remoted CUDA. Copy-paste host
 wrapper + results table: [`lambda-instructions.md`](./lambda-instructions.md) §9.
+
+**2026-07-15 (v1.6.0 + rebuilt libkrun):** fp32 / bf16 / fused SDPA PASS. `torch.compile`
+needs gcc + `libcuda.so` symlink for even a simple module; HF+compile still FAIL.
+See §9e (GLIBC/`#636`) and §9f.
 
 ## CUDA shims (release tarball gap — [#596](https://github.com/smol-machines/smolvm/issues/596))
 

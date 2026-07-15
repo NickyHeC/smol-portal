@@ -171,6 +171,10 @@ the smolvm host process (process-level GPU isolation).
 **Requirements**
 - **smolvm ≥ 1.5.2**, with CUDA shims present in `agent-rootfs/usr/local/lib/smolvm-cuda/`
   (`libcuda.so.1`, `libcudart-shim.so`). Shim build must match the smolvm version.
+  **v1.6.0 note (2026-07-15):** the published Linux x86_64 tarball's `libkrun.so`
+  requires **GLIBC_2.39** and does not boot on Ubuntu 22.04 (glibc 2.35) until
+  rebuilt — [smol-machines/smolvm#636](https://github.com/smol-machines/smolvm/issues/636).
+  Keep **1.5.2** as the safe stock minimum on 22.04 until a fixed release ships.
 - **Worker image** `portal-cuda.tar` — pre-bakes pip `torch` (CUDA build) so
   smolvm's staging interposes its shims at image-pull time. Libraries installed
   *after* launch are invisible to staging.
