@@ -5,6 +5,16 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-15 (later) — #636 closed; stock min → v1.6.2 on 22.04
+
+- Upstream merged [#644](https://github.com/smol-machines/smolvm/pull/644) (rebuild
+  libkrun floor 2.34 + CI gate) and cut **[v1.6.2](https://github.com/smol-machines/smolvm/releases/tag/v1.6.2)**.
+- Closed our duplicate [#639](https://github.com/smol-machines/smolvm/pull/639)
+  (superseded) and [#636](https://github.com/smol-machines/smolvm/issues/636).
+- **Guidance:** on Ubuntu 22.04 use **smolvm ≥ 1.6.2** (or stay on 1.5.2). Stock
+  1.6.0/1.6.1 still need the §9e host rebuild if you must use them. SPEC /
+  AGENTS / runbook updated; no more default workaround for new boxes on 1.6.2+.
+
 ## 2026-07-15 — Track A Lambda: smolvm v1.6.0 hosting de-risk (A10)
 
 - **Box:** Lambda Ubuntu 22.04 / glibc 2.35 / A10. Bootstrap `VER=1.6.0` + matching CUDA
@@ -30,9 +40,8 @@ top. Each entry: date, summary, key outcomes, and decisions made.
       transformers wrapping) — treat HF+compile as unsupported for now
 - **Implications:** worker images that may run `torch.compile` need **gcc** and an
   unversioned `libcuda.so` link (or staging should install it). Keep compile
-  force-off for portallib until HF path is green. Do **not** bump “min smolvm” to
-  1.6.0 for Ubuntu 22.04 users until #636 ships a fixed tarball (1.5.2 still
-  safest stock release on 22.04).
+  force-off for portallib until HF path is green. (Follow-up same day: #636 fixed
+  in upstream v1.6.2 — see entry above.)
 - **Skipped:** real Qwen→TinyLlama (time / Track A goal was hosting + probe).
 
 ## 2026-07-14 (afternoon pickup) — Connector prep: portallib worker image + smoke

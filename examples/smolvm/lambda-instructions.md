@@ -8,14 +8,15 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-15 — hosting de-risk on smolvm **v1.6.0** (cloud A10),
-**after** rebuilding release `libkrun.so` for glibc ≤2.35 (stock v1.6.0 tarball is
-broken on Ubuntu 22.04 — see [#636](https://github.com/smol-machines/smolvm/issues/636)
-and §9e). Prior full real-model PorTAL e2e: 2026-07-13 on **v1.5.2**.
+**Last validated:** 2026-07-15 — hosting de-risk on smolvm **v1.6.0** (cloud A10)
+with a host-side libkrun rebuild (§9e). **Preferred stock release now: v1.6.2+**
+([#636](https://github.com/smol-machines/smolvm/issues/636) fixed in
+[#644](https://github.com/smol-machines/smolvm/pull/644)). Prior full real-model
+PorTAL e2e: 2026-07-13 on **v1.5.2**.
 
-**Today’s target (2026-07-14/15):** host on **smolvm v1.6.0** — see **§9**. Historical §1–§5
-blocks may still say `1.5.2`; for this session set `VER=1.6.0` everywhere **and**
-apply the §9e libkrun rebuild on Ubuntu 22.04 hosts.
+**Bootstrap version:** set `VER=1.6.2` (or newer) on Ubuntu 22.04. Historical §1–§5
+/ §9 blocks may still say `1.5.2` or `1.6.0`. **Avoid stock 1.6.0 / 1.6.1** on
+22.04 unless you apply §9e.
 
 | Resource | Path |
 |----------|------|
@@ -72,16 +73,16 @@ source "$HOME/.cargo/env"
 rustc --version
 
 # --- smolvm release tarball ---
-# 2026-07-14 afternoon: VER=1.6.0 (shim tag MUST match). Prior validated: 1.5.2.
+# Prefer VER=1.6.2+ on Ubuntu 22.04 (1.6.0/1.6.1 need §9e). Shim tag MUST match.
 cd ~
-VER=1.6.0
+VER=1.6.2
 curl -L --progress-bar -o smolvm.tar.gz \
   "https://github.com/smol-machines/smolvm/releases/download/v${VER}/smolvm-${VER}-linux-x86_64.tar.gz"
 tar xzf smolvm.tar.gz
 ~/smolvm-${VER}-linux-x86_64/smolvm --version
 
 # --- CUDA shims (release tarball omits them — #596) ---
-# **Shim version MUST match the release tarball** (v1.5.2 shims + v1.5.2 binary).
+# **Shim version MUST match the release tarball** (e.g. v1.6.2 shims + v1.6.2 binary).
 # Mismatch → cuda: False with staging OK and cuda.sock present (protocol skew).
 
 git clone https://github.com/smol-machines/smolvm.git ~/smolvm
@@ -673,22 +674,25 @@ Paste the JSON into the private session card (`smolvm-notes/`).
 3. If v1.6.0 changes the working minimum, update `SPEC.md` / README “≥ …” line.
 4. Skim `src/cuda_daemon.rs` notes only if shim install path looked different (optional).
 
-### 9e — Required on Ubuntu 22.04: rebuild v1.6.0 `libkrun.so` (GLIBC_2.39)
+### 9e — Historical: rebuild v1.6.0/1.6.1 `libkrun.so` on Ubuntu 22.04 (GLIBC_2.39)
 
-Stock `smolvm-1.6.0-linux-x86_64.tar.gz` ships `lib/libkrun.so` with max symbol
-**GLIBC_2.39**. Ubuntu 22.04 hosts (glibc 2.35) fail at `machine run` boot:
+**Prefer v1.6.2+** — [#636](https://github.com/smol-machines/smolvm/issues/636) is
+fixed in [#644](https://github.com/smol-machines/smolvm/pull/644) / **v1.6.2**
+(stock floor 2.34; CI gate prevents regression). Skip this section on 1.6.2+.
+
+Stock **v1.6.0 / v1.6.1** `lib/libkrun.so` floors at **GLIBC_2.39**. Ubuntu 22.04
+hosts (glibc 2.35) fail at `machine run` boot:
 
 ```text
 version `GLIBC_2.39' not found (required by .../lib/libkrun.so)
 ```
 
-Tracked upstream: [#636](https://github.com/smol-machines/smolvm/issues/636).
 `v1.5.2` release libkrun maxes at **2.34** and still boots on 22.04.
 
-**Workaround (run once per box after §1 tarball extract):**
+**Workaround (only if you must run stock 1.6.0/1.6.1 on 22.04):**
 
 ```bash
-cd ~/smolvm   # git checkout v1.6.0
+cd ~/smolvm   # git checkout v1.6.0   # or v1.6.1
 # Prefer HTTPS — Lambda often has no GitHub SSH key:
 sed -i 's|git@github.com:|https://github.com/|g' .gitmodules
 git submodule sync && git submodule update --init libkrun
@@ -697,7 +701,7 @@ sudo apt-get install -y git-lfs && git lfs install && git lfs pull
 SKIP_LIBKRUNFW=1 GPU=1 ./scripts/build-libkrun-linux.sh
 # expect: objdump -T lib/linux-x86_64/libkrun.so | … | sort -V | tail -1  →  2.34
 
-REL=~/smolvm-1.6.0-linux-x86_64
+REL=~/smolvm-${VER}-linux-x86_64   # VER=1.6.0 or 1.6.1
 cp -a "$REL/lib/libkrun.so" "$REL/lib/libkrun.so.broken-glibc239"
 cp -a lib/linux-x86_64/libkrun.so "$REL/lib/libkrun.so"
 cp -a lib/linux-x86_64/libkrun.so.2.0.0 "$REL/lib/" 2>/dev/null || true
