@@ -8,15 +8,16 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-15 — hosting de-risk on smolvm **v1.6.0** (cloud A10)
-with a host-side libkrun rebuild (§9e). **Preferred stock release now: v1.6.2+**
-([#636](https://github.com/smol-machines/smolvm/issues/636) fixed in
-[#644](https://github.com/smol-machines/smolvm/pull/644)). Prior full real-model
-PorTAL e2e: 2026-07-13 on **v1.5.2**.
+**Last validated:** 2026-07-15 evening — smolvm **#601 from-main** on cloud A10:
+packaged rootfs (no hand shim cp) → `cuda: True`; portallib 1.7B×14×8 smoke
+macro 0.607→0.741. Stock **v1.6.3** still ships **no** CUDA shims (#601 missed
+that cut). **Preferred stock release: v1.6.2+** for glibc; keep the manual shim
+step until a release includes #601. Prior: v1.6.0 hosting de-risk + §9e; PorTAL
+e2e 2026-07-13 on **v1.5.2**.
 
 **Bootstrap version:** set `VER=1.6.2` (or newer) on Ubuntu 22.04. Historical §1–§5
 / §9 blocks may still say `1.5.2` or `1.6.0`. **Avoid stock 1.6.0 / 1.6.1** on
-22.04 unless you apply §9e.
+22.04 unless you apply §9e. Do **not** skip the shim-copy block for stock ≤1.6.3.
 
 | Resource | Path |
 |----------|------|
@@ -81,7 +82,9 @@ curl -L --progress-bar -o smolvm.tar.gz \
 tar xzf smolvm.tar.gz
 ~/smolvm-${VER}-linux-x86_64/smolvm --version
 
-# --- CUDA shims (release tarball omits them — #596) ---
+# --- CUDA shims (stock release tarballs through v1.6.3 omit them — #596) ---
+# #601 (merged on main) bundles shims into agent-rootfs; it is NOT in the v1.6.3
+# tarball yet. Keep this manual step until a release ships #601.
 # **Shim version MUST match the release tarball** (e.g. v1.6.2 shims + v1.6.2 binary).
 # Mismatch → cuda: False with staging OK and cuda.sock present (protocol skew).
 
@@ -532,7 +535,7 @@ Add `-e PORTAL_SKIP_CUDA_SMOLVM=1` (smolvm ≥1.5.2). **Train validated 2026-07-
 
 | Issue | Symptom | Workaround |
 |-------|---------|------------|
-| [#596](https://github.com/smol-machines/smolvm/issues/596) release missing shims | `cuda: False` (801) on stock tarball | Manual `cargo build` + copy to `agent-rootfs` (PR [#601](https://github.com/smol-machines/smolvm/pull/601)) |
+| [#596](https://github.com/smol-machines/smolvm/issues/596) release missing shims | `cuda: False` (801) on stock tarball (still true through **v1.6.3**) | Manual `cargo build` + copy to `agent-rootfs`. [#601](https://github.com/smol-machines/smolvm/pull/601) merged on `main` (validated on A10 2026-07-15); awaits next release cut |
 | Shim version skew | staging OK, `cuda.sock` present, `cuda: False` | Match git tag to tarball; `git fetch upstream --tags` |
 | [#598](https://github.com/smol-machines/smolvm/issues/598) staging layout | conda / runtime `pip install torch` misses shims | Pre-bake pip torch in `portal-cuda.tar` |
 | [#597](https://github.com/smol-machines/smolvm/issues/597) fused SDPA | FAIL on **v1.5.0** | **Fixed in v1.5.2** — use v1.5.2+; math SDPA workaround still default in portal |

@@ -176,6 +176,10 @@ the smolvm host process (process-level GPU isolation).
   v1.6.1** `libkrun.so` floors at **GLIBC_2.39** and will not boot
   ([smol-machines/smolvm#636](https://github.com/smol-machines/smolvm/issues/636),
   fixed in [#644](https://github.com/smol-machines/smolvm/pull/644) / v1.6.2).
+  **Stock release tarballs through v1.6.3 still omit CUDA shims** ([#596](https://github.com/smol-machines/smolvm/issues/596));
+  build+copy them from the matching tag (see `examples/smolvm/`). [#601](https://github.com/smol-machines/smolvm/pull/601)
+  (merged on `main`) will land that bundling in a *future* release — do not
+  assume “≥ 1.6.3 ⇒ no manual shim install.”
 - **Worker image** `portal-cuda.tar` — pre-bakes pip `torch` (CUDA build) so
   smolvm's staging interposes its shims at image-pull time. Libraries installed
   *after* launch are invisible to staging.

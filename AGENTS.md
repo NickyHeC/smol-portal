@@ -37,7 +37,7 @@ Ask only for what's missing; infer sensible defaults for the rest and state them
 | Dataset (HF id) | train, eval, calibration | e.g. `stanfordnlp/imdb` |
 | Goal | sizing | smoke test vs. real accuracy run |
 | GPU spec | memory/dtype | VRAM, driver; validated on A10 22 GiB |
-| smolvm version | compatibility | **≥ 1.6.2** recommended (or ≥ 1.5.2; avoid 1.6.0/1.6.1 on Ubuntu 22.04 — see SPEC) |
+| smolvm version | compatibility | **≥ 1.6.2** recommended (or ≥ 1.5.2; avoid 1.6.0/1.6.1 on Ubuntu 22.04 — see SPEC). Stock ≤1.6.3 still needs manual CUDA shims (#596; #601 awaits next release) |
 | SDPA | perf | math (default, safe) or fused (`PORTAL_SKIP_CUDA_SMOLVM=1`, smolvm ≥ 1.5.2) |
 
 If the user only wants to train an adapter (not port it), use `portal train`
@@ -47,6 +47,8 @@ alone. If they want the full port, use the e2e path below.
 
 1. **smolvm ≥ 1.6.2** (or ≥ 1.5.2) with CUDA shims present in `agent-rootfs`
    (see SPEC §smolvm). On Ubuntu 22.04, skip stock **1.6.0 / 1.6.1** (GLIBC_2.39).
+   Stock tarballs through **1.6.3** still omit shims — build+copy from the matching
+   tag until a release ships [#601](https://github.com/smol-machines/smolvm/pull/601).
 2. **Worker image** `portal-cuda.tar` — a pre-baked pip-torch image so smolvm's
    CUDA staging can interpose at pull time. Build:
    `docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda . && docker save portal-cuda -o portal-cuda.tar`

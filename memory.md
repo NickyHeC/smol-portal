@@ -5,6 +5,27 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-15 (late) — smolvm #601 validated from main on A10; stock v1.6.3 still ships no CUDA shims
+
+- **smolvm #601** (bundle CUDA shims + `smolvm-cuda-run` in agent-rootfs) **merged**
+  on `main` (`1d0b795`). Tag **v1.6.3** was cut earlier the same day from a
+  separate `release-1.6.3` branch and **does not include #601**. Empirically:
+  stock `smolvm-1.6.3-linux-x86_64.tar.gz` still has empty
+  `agent-rootfs/usr/local/lib/` and no `smolvm-cuda-run` (same #596 gap).
+- **Do not** treat “smolvm ≥ 1.6.3” as “no manual shim copy.” Keep recommended
+  floor **≥ 1.6.2** (glibc) + manual shim build until a *released* tarball
+  ships #601 (likely next point release). No Bin ping — they’ll pick it up.
+- **A10 validation** (Lambda, Ubuntu 22.04): built from `main`, packaged rootfs
+  via #601 env-var path only (`CUDART_SHIM_*` + `--no-build-agent`), no hand
+  `cp` into `smolvm-cuda/`. `portal-cuda` gate → `cuda: True` / `NVIDIA A10`.
+  Host binary must match shim commit (v1.6.2 host + main shims → err 801).
+  Conda `pytorch/pytorch` images still need #602-style path staging; use
+  pip-torch `portal-cuda` / `portallib-cuda` for packaging proofs.
+- **portallib smoke** on that same remoting stack: `portal-qwen3-1.7b@v0.1.0`,
+  14×8 ex, fp32+math → macro **0.607 → 0.741** (matches prior T2). No Gemma.
+- Local-tar `-v` host mounts remain flaky for injecting scripts; base64 inject
+  still works.
+
 ## 2026-07-15 (evening) — portallib v0.1.0 landed; connector T0–T5b PASS; upstream issues filed
 
 - **portallib v0.1.0 shipped** (PyPI `portallib==0.1.0`, tag/release, HF artifacts
