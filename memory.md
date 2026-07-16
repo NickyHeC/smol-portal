@@ -5,6 +5,18 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## Next session (2026-07-17) — plan
+
+A10 is enough; no H100. Detail / checkboxes live in private
+`smolvm-notes/github-action-items.md` § “Plan for 2026-07-17”.
+
+1. **Primary (next GPU box):** stock **smolvm v1.6.4**, skip manual shim copy,
+   CUDA gate → expect `cuda: True`. Optional portallib 1.7B smoke for continuity.
+2. **Watch:** portallib **0.2.0** PyPI (CLI + warmup merged, not released) →
+   bump Dockerfile pin + re-validate CLI when it lands. Routine daily startup.
+3. **Parked:** 8B hang HOLD (does not meet filing bar); stdin `--config -`
+   dropped; microVM example / hosting-switch still too early.
+
 ## 2026-07-16 (afternoon) — portallib 0.1.2/0.2.0: issues resolved upstream, CLI reviewed
 
 - **Ramp shipped fast.** `portallib` **0.1.1 → 0.1.2** (PyPI) landed our filed
