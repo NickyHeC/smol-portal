@@ -2,20 +2,18 @@
 # libs at image pull (smolvm #598). Companion to Dockerfile.portal-cuda (legacy
 # portal ML); this image targets Ramp's portallib engine.
 #
-# Build (full — requires installable portallib, i.e. ramp-public/portallib #1 merged):
-#   docker build -f examples/smolvm/Dockerfile.portallib-cuda -t portallib-cuda .
+# Build:
+#   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+#     --build-arg PORTALLIB_SPEC='portallib[training]==0.1.0' \
+#     -t portallib-cuda .
 #   docker save portallib-cuda -o portallib-cuda.tar
 #
-# Deps-only (works today while portallib is still README-only):
+# Deps-only (torch/HF stack, no engine):
 #   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
 #     --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
 #
-# When PyPI publishes:
-#   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
-#     --build-arg PORTALLIB_SPEC='portallib==0.1.0' -t portallib-cuda .
-#
-# Pin a branch/commit once the package exists:
-#   --build-arg PORTALLIB_SPEC='git+https://github.com/ramp-public/portallib.git@<ref>'
+# Pin a git ref instead of PyPI:
+#   --build-arg PORTALLIB_SPEC='git+https://github.com/ramp-public/portallib.git@v0.1.0'
 
 FROM python:3.11-slim-bookworm
 
@@ -28,19 +26,18 @@ RUN apt-get update \
 RUN pip install --no-cache-dir torch \
     --index-url https://download.pytorch.org/whl/cu124
 
-# Same HF ranges as pipeline/portal (validated under smolvm CUDA remoting).
+# Match portallib[training]==0.1.0 extras (transformers>=4.52,<6; peft>=0.15).
+# Do NOT reuse the legacy portal pin transformers<4.52 — it conflicts with 0.1.0.
 RUN pip install --no-cache-dir \
-    "transformers>=4.45,<4.52" \
-    "peft>=0.14,<0.18" \
-    "datasets>=3.0,<4" \
+    "transformers>=4.52,<6" \
+    "peft>=0.15,<1" \
+    "datasets>=3,<5" \
     "accelerate>=1.0,<2" \
-    "safetensors>=0.4" \
-    "typer>=0.15" \
-    "rich>=13.0" \
-    "pydantic>=2.0"
+    "huggingface-hub>=0.30,<2" \
+    "safetensors>=0.4,<1"
 
-# Engine. Default = GitHub until PyPI; override with PORTALLIB_SPEC.
-ARG PORTALLIB_SPEC="git+https://github.com/ramp-public/portallib.git"
+# Engine. Prefer the PyPI training extra so transformers/peft ranges stay aligned.
+ARG PORTALLIB_SPEC="portallib[training]==0.1.0"
 ARG INSTALL_PORTALLIB=1
 RUN if [ "${INSTALL_PORTALLIB}" = "1" ]; then \
       pip install --no-cache-dir "${PORTALLIB_SPEC}"; \
@@ -49,8 +46,8 @@ RUN if [ "${INSTALL_PORTALLIB}" = "1" ]; then \
     fi
 
 # Hosting defaults for constrained CUDA remoting (smolvm). Override to probe fused
-# paths: PORTAL_SKIP_CUDA_SMOLVM=1. Force-offs may grow after the Lambda capability
-# matrix (bf16 / flash SDPA / torch.compile / multi-GPU).
+# paths: PORTAL_SKIP_CUDA_SMOLVM=1. Prefer math SDPA + no compile for first green path.
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
     HF_HOME=/tmp/hf \
-    PORTALLIB_HOST=smolvm
+    PORTALLIB_HOST=smolvm \
+    TORCH_COMPILE_DISABLE=1

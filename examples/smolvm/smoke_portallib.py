@@ -1,224 +1,220 @@
 #!/usr/bin/env python3
-"""Smoke harness for one Ramp ``portallib-tasks`` task inside smolvm.
+"""T2 smoke: tiny ``acc_norm`` eval of a published portallib artifact.
 
-Ready to run the moment ``portallib`` is installable (ramp-public/portallib issue #1).
-Until then, ``--dry-run`` validates dataset access + import discovery without GPU.
+Designed for smolvm CUDA remoting (and bare-metal twin runs). Uses the public
+v0.1.0 API — ``PortalModel`` + ``PortalEvaluator`` — not a CLI (none yet).
 
-Intended host wrapper (after building ``portallib-cuda.tar``):
+Host wrapper (after building ``portallib-cuda.tar``):
 
     smolvm machine run --net --cuda --mem 16384 \\
       -e HF_HOME=/tmp/hf \\
       -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \\
       --image ./portallib-cuda.tar -- \\
-      python3 /path/to/smoke_portallib.py --task boolq --max-samples 8
+      python3 /workspace/smol-portal/examples/smolvm/smoke_portallib.py \\
+        --task rte --max-examples 8
 
-What this script does today
----------------------------
-1. Loads a single task slice from ``RampPublic/portallib-tasks``.
-2. Discovers a callable entry point on the installed ``portallib`` package
-   (CLI module or Python API — shapes TBD until their alpha merges).
-3. Invokes a **minimal** train/eval path when discovery succeeds; otherwise
-   prints what was found and exits non-zero so the connector can adapt.
-
-What it deliberately does *not* do
-----------------------------------
-- Reimplement PorTAL. Engine = portallib.
-- Claim accuracy. This is hosting-fidelity plumbing smoke only.
+Default artifact is the smaller Qwen3-1.7B published source (fits A10 better than
+4B/8B for first green). Override with ``--artifact`` / ``--base-id``.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib
-import importlib.util
 import json
 import os
-import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 
 DEFAULT_DATASET = "RampPublic/portallib-tasks"
-# boolq is a standard multiple-choice row in the suite; override freely.
-DEFAULT_TASK = "boolq"
+DEFAULT_DATASET_REVISION = "d35f1e8a813cfae662166164fc25965a31b01ae0"
+DEFAULT_ARTIFACT = "RampPublic/portal-qwen3-1.7b"
+DEFAULT_ARTIFACT_REVISION = "v0.1.0"
+DEFAULT_BASE_ID = "Qwen/Qwen3-1.7B"
+DEFAULT_BASE_REVISION = "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
+DEFAULT_TASK = "rte"
 
 
-def _load_task_rows(dataset_id: str, task: str, max_samples: int, split: str) -> list[dict[str, Any]]:
-    from datasets import load_dataset
-
-    ds = load_dataset(dataset_id, split=split)
-    if "task" not in ds.column_names:
-        raise SystemExit(
-            f"{dataset_id!r} has no 'task' column; columns={ds.column_names}. "
-            "Expected RampPublic/portallib-tasks schema."
-        )
-    filtered = ds.filter(lambda row: row["task"] == task)
-    if len(filtered) == 0:
-        # Help the operator pick a real task name.
-        names = sorted(set(ds["task"]))
-        raise SystemExit(
-            f"No rows for task={task!r} in {dataset_id} ({split=}). "
-            f"Available tasks ({len(names)}): {names[:20]}{'…' if len(names) > 20 else ''}"
-        )
-    n = min(max_samples, len(filtered))
-    return [dict(filtered[i]) for i in range(n)]
+@dataclass(frozen=True)
+class BaseRecipe:
+    model_id: str
+    revision: str
+    layer_path: str = "model.layers"
 
 
-def _discover_portallib() -> dict[str, Any]:
-    """Probe installed portallib for CLI / API entry points once the alpha lands."""
-    info: dict[str, Any] = {"importable": False, "version": None, "cli": None, "api_attrs": []}
-    if importlib.util.find_spec("portallib") is None:
-        return info
-    info["importable"] = True
-    mod = importlib.import_module("portallib")
-    info["version"] = getattr(mod, "__version__", None)
-    info["api_attrs"] = sorted(
-        name
-        for name in dir(mod)
-        if not name.startswith("_") and callable(getattr(mod, name, None))
-    )[:40]
+def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
+    """Best-effort knobs for constrained CUDA remoting (smolvm)."""
+    import torch
 
-    # Prefer a console script if present.
-    for cmd in ("portallib", "portal"):
-        try:
-            proc = subprocess.run(
-                [cmd, "--help"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-            if proc.returncode == 0 or "usage" in (proc.stdout + proc.stderr).lower():
-                info["cli"] = cmd
-                info["cli_help_head"] = (proc.stdout or proc.stderr)[:500]
-                break
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+    if math_sdpa and hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "enable_flash_sdp"):
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+        print("sdpa: math only (flash/mem_efficient off)", flush=True)
 
-    # Common module layouts to try when there's no console script yet.
-    for mod_name in (
-        "portallib.cli",
-        "portallib.__main__",
-        "portallib.train",
-        "portallib.eval",
-        "portallib.port",
-    ):
-        if importlib.util.find_spec(mod_name) is not None:
-            info.setdefault("modules", []).append(mod_name)
-
-    return info
+    # Inductor / compile is hostile in slim guests; keep off for smoke.
+    os.environ.setdefault("TORCH_COMPILE_DISABLE", "1")
+    if force_fp32:
+        print("dtype: fp32 (hosting-safe)", flush=True)
 
 
-def _try_run_engine(
-    discovery: dict[str, Any],
-    *,
-    task: str,
-    rows: list[dict[str, Any]],
-    output_dir: Path,
-    max_samples: int,
-) -> int:
-    """Best-effort invoke once APIs exist. Returns process exit code."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "task": task,
-        "n_rows": len(rows),
-        "max_samples": max_samples,
-        "host": os.environ.get("PORTALLIB_HOST", "unknown"),
-        "discovery": {
-            k: discovery[k] for k in ("importable", "version", "cli", "modules") if k in discovery
-        },
-    }
-    (output_dir / "smoke_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool):
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from portallib import PortalBase
 
-    cli = discovery.get("cli")
-    if cli == "portallib":
-        # Placeholder argv until we read their real CLI after #1 merges.
-        # Prefer eval-on-samples if that subcommand exists; else fail soft.
-        candidates = [
-            [cli, "eval", "--task", task, "--max-samples", str(max_samples),
-             "--output-dir", str(output_dir)],
-            [cli, "--help"],
-        ]
-        for argv in candidates:
-            print(f"trying: {' '.join(argv)}", flush=True)
-            proc = subprocess.run(argv, check=False)
-            if proc.returncode == 0 and argv[-1] != "--help":
-                print("portallib smoke ok", flush=True)
-                return 0
-            if argv[-1] == "--help":
-                print(
-                    "portallib CLI found but train/port/eval argv not yet wired in this harness; "
-                    "update smoke_portallib.py after reading the landed API.",
-                    flush=True,
-                )
-                return 2
-        return proc.returncode
+    tokenizer = AutoTokenizer.from_pretrained(recipe.model_id, revision=recipe.revision)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-    print(
-        "portallib is importable but no supported CLI entry was discovered.\n"
-        f"  version={discovery.get('version')!r}\n"
-        f"  modules={discovery.get('modules')}\n"
-        f"  api_attrs(sample)={discovery.get('api_attrs')}\n"
-        "Update this harness against the landed API (see ROADMAP Phase A3).",
-        flush=True,
+    # Bulk ``.to("cuda")`` has failed on remoted CUDA; prefer incremental map.
+    kwargs: dict = {"revision": recipe.revision, "torch_dtype": dtype}
+    if hosting_safe and device.type == "cuda":
+        kwargs["device_map"] = "cuda"
+        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs).to(device)
+
+    return PortalBase(
+        model_id=recipe.model_id,
+        model=model,
+        tokenizer=tokenizer,
+        revision=recipe.revision,
+        layer_path=recipe.layer_path,
     )
-    return 3
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default=DEFAULT_DATASET, help="HF dataset id.")
-    parser.add_argument("--task", default=DEFAULT_TASK, help="Task name inside the dataset.")
-    parser.add_argument("--split", default="validation", help="HF split to sample.")
-    parser.add_argument("--max-samples", type=int, default=8, help="Rows to load (smoke size).")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET)
+    parser.add_argument("--dataset-revision", default=DEFAULT_DATASET_REVISION)
+    parser.add_argument("--artifact", default=DEFAULT_ARTIFACT)
+    parser.add_argument("--artifact-revision", default=DEFAULT_ARTIFACT_REVISION)
+    parser.add_argument("--base-id", default=DEFAULT_BASE_ID)
+    parser.add_argument("--base-revision", default=DEFAULT_BASE_REVISION)
+    parser.add_argument("--task", default=DEFAULT_TASK)
+    parser.add_argument("--max-examples", type=int, default=8)
+    parser.add_argument("--eval-batch-size", type=int, default=1)
+    parser.add_argument("--max-prompt", type=int, default=512)
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/portallib-smoke"))
+    parser.add_argument(
+        "--hosting-safe",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("PORTALLIB_HOST") == "smolvm",
+        help="fp32 + math SDPA + device_map=cuda (default on when PORTALLIB_HOST=smolvm).",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Load task rows + discover portallib; do not invoke the engine.",
+        help="Import portallib + load dataset slice only; skip model download/eval.",
     )
     args = parser.parse_args()
 
-    print(f"loading {args.dataset} task={args.task!r} split={args.split} n≤{args.max_samples}")
-    rows = _load_task_rows(args.dataset, args.task, args.max_samples, args.split)
-    sample_keys = sorted(rows[0].keys())
-    print(f"loaded {len(rows)} rows; keys={sample_keys}")
-    # Don't dump full prompts (can be long); show gold index only.
-    print(f"first gold_idx={rows[0].get('gold_idx')!r}")
+    try:
+        import portallib
+        from portallib import ChoiceDataset, PortalEvaluator, PortalModel
+    except ImportError as exc:
+        raise SystemExit(
+            "portallib is not importable. Rebuild Dockerfile.portallib-cuda with "
+            "PORTALLIB_SPEC='portallib[training]==0.1.0'."
+        ) from exc
 
-    discovery = _discover_portallib()
-    print("portallib discovery:", json.dumps(
-        {k: discovery[k] for k in ("importable", "version", "cli") if k in discovery},
-        indent=2,
-    ))
+    print(
+        json.dumps(
+            {
+                "portallib": getattr(portallib, "__version__", None),
+                "artifact": args.artifact,
+                "artifact_revision": args.artifact_revision,
+                "base": args.base_id,
+                "task": args.task,
+                "max_examples": args.max_examples,
+                "hosting_safe": args.hosting_safe,
+                "host": os.environ.get("PORTALLIB_HOST", "unknown"),
+            }
+        ),
+        flush=True,
+    )
+
+    dataset = ChoiceDataset.from_hub(args.dataset, revision=args.dataset_revision)
+    if args.task not in dataset.tasks:
+        raise SystemExit(f"task={args.task!r} not in dataset tasks={list(dataset.tasks)}")
+    print(f"dataset tasks={len(dataset.tasks)}; using {args.task!r}", flush=True)
 
     if args.dry_run:
-        print("dry-run ok (dataset + discovery only)")
-        if not discovery["importable"]:
-            print(
-                "note: portallib not installed — rebuild with INSTALL_PORTALLIB=1 "
-                "once ramp-public/portallib#1 merges, or pip install inside the VM.",
-                flush=True,
-            )
+        print("dry-run ok (import + dataset only)", flush=True)
         sys.exit(0)
 
-    if not discovery["importable"]:
-        raise SystemExit(
-            "portallib is not importable in this environment. "
-            "Build examples/smolvm/Dockerfile.portallib-cuda with INSTALL_PORTALLIB=1 "
-            "(requires the alpha package on GitHub/PyPI)."
-        )
+    import torch
 
-    raise SystemExit(
-        _try_run_engine(
-            discovery,
-            task=args.task,
-            rows=rows,
-            output_dir=args.output_dir,
-            max_samples=args.max_samples,
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"cuda_available={torch.cuda.is_available()} device={device}", flush=True)
+    if args.hosting_safe:
+        _apply_hosting_knobs(force_fp32=True, math_sdpa=device.type == "cuda")
+        dtype = torch.float32
+    else:
+        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        print(f"dtype: {dtype}", flush=True)
+
+    portal = PortalModel.from_pretrained(args.artifact, revision=args.artifact_revision)
+    if portal.config.base_model_name_or_path != args.base_id:
+        raise SystemExit(
+            f"artifact expects base {portal.config.base_model_name_or_path!r}, "
+            f"got --base-id {args.base_id!r}"
         )
+    if args.task not in portal.config.tasks:
+        raise SystemExit(f"task={args.task!r} not in artifact tasks={list(portal.config.tasks)}")
+
+    recipe = BaseRecipe(args.base_id, args.base_revision)
+    print(f"loading base {recipe.model_id}@{recipe.revision} …", flush=True)
+    base = _load_base(recipe, device=device, dtype=dtype, hosting_safe=args.hosting_safe)
+
+    evaluator = PortalEvaluator(max_prompt=args.max_prompt, batch_size=args.eval_batch_size)
+    # PortalEvaluator requires portal.config.tasks order when portal= is set.
+    # Smoke still uses --task for a focused lift printout; metrics cover all tasks.
+    tasks = tuple(portal.config.tasks)
+    print(f"evaluating base floor over {len(tasks)} tasks (max_examples={args.max_examples}) …", flush=True)
+    base_result = evaluator.evaluate(base, dataset, tasks=tasks, max_examples=args.max_examples)
+    print("evaluating portal-adapted …", flush=True)
+    portal_result = evaluator.evaluate(
+        base,
+        dataset,
+        tasks=tasks,
+        portal=portal,
+        max_examples=args.max_examples,
     )
+
+    focus = args.task
+    report = {
+        "artifact": args.artifact,
+        "artifact_revision": args.artifact_revision,
+        "base_id": args.base_id,
+        "focus_task": focus,
+        "tasks": list(tasks),
+        "max_examples": args.max_examples,
+        "hosting_safe": args.hosting_safe,
+        "device": str(device),
+        "dtype": str(dtype),
+        "base": base_result.to_dict(),
+        "portal": portal_result.to_dict(),
+        "macro_accuracy_lift": portal_result.macro_accuracy - base_result.macro_accuracy,
+        "focus_accuracy_lift": (
+            portal_result.tasks[focus].accuracy - base_result.tasks[focus].accuracy
+            if focus in portal_result.tasks and focus in base_result.tasks
+            else None
+        ),
+    }
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    out = args.output_dir / "smoke_eval.json"
+    out.write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2), flush=True)
+    print(f"wrote {out}", flush=True)
+
+    # Finite metrics = plumbing PASS (accuracy not judged at smoke size).
+    if not (0.0 <= base_result.macro_accuracy <= 1.0 and 0.0 <= portal_result.macro_accuracy <= 1.0):
+        raise SystemExit("acc_norm out of [0,1] — eval plumbing broken")
+    if portal_result.macro_gold_nll != portal_result.macro_gold_nll:  # NaN
+        raise SystemExit("portal gold_nll is NaN")
+    print("portallib smoke ok", flush=True)
 
 
 if __name__ == "__main__":

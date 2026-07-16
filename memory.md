@@ -5,6 +5,47 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-15 (evening) — portallib v0.1.0 landed; connector T0–T5b PASS; upstream issues filed
+
+- **portallib v0.1.0 shipped** (PyPI `portallib==0.1.0`, tag/release, HF artifacts
+  `RampPublic/portal-qwen3-{1.7b,4b,8b}` + `portal-gemma-3-4b`, dataset
+  `RampPublic/portallib-tasks`). Public API is library-shaped:
+  `PortalCoreTrainer` / `PortalAdapterRefitter` / `PortalEvaluator` / `PortalModel`
+  (+ Hub `from_pretrained` / `export_peft`). No CLI.
+- **Connector test plan run** (T0–T4 PASS; **T5a + T5b PASS** on 1× H100):
+  - **T0** (Mac CPU): `pip install 'portallib[training]==0.1.0'`; 39 pytest pass.
+  - **T1** (Mac CPU): `PortalModel.from_pretrained("…portal-qwen3-4b", "v0.1.0")` →
+    `export_peft("rte")` → ordinary PEFT dir (no base LLM load needed).
+  - **T2** (Lambda A10, smolvm **v1.6.2** + matching shims): tiny `acc_norm` eval
+    inside the microVM, fp32 + math SDPA + `device_map="cuda"`. macro acc
+    0.607 → 0.741 on a 14-task × 8-example smoke slice.
+  - **T3** (same box, bare `docker --gpus` twin): **identical** macro acc / lift to
+    T2 (Δacc = 0; portal NLL within ~1e-7). Hosting-fidelity DoD met at smoke size.
+  - **T4** (in smolvm): tiny `PortalAdapterRefitter` `portal-qwen3-1.7b` →
+    Qwen3-0.6B, 1 epoch / 8 ex — plumbing PASS (grad flowing, gold_nll 3.42→2.52).
+  - **T5a** (Lambda **1× H100 80GB**, smolvm v1.6.2): published
+    `portal-qwen3-8b@v0.1.0` + Qwen3-8B, 14×64 ex, fp32 hosting-safe.
+    smolvm macro 0.682 → 0.776 (lift +0.095); bare twin **identical** (Δacc = 0,
+    NLL Δ ≈ 1e-8). Real-scale hosting fidelity **PASS**.
+  - **T5b** (same H100): `portal-qwen3-4b` → Qwen3-8B refit, **1000 ex/task**,
+    1 epoch, batch 4, **bf16** (fp32 hung at 0% util). acc_norm 0.680 → 0.785;
+    gold_nll 3.704 → 1.321; 250 steps × 14 tasks; ~15 min. Train path at paper
+    scale under remoting **PASS**. T5c dual-source train still optional.
+- **Connector assets updated** (`examples/smolvm/`): `Dockerfile.portallib-cuda`
+  bumped to `portallib[training]==0.1.0` (transformers ≥ 4.52, dropping the legacy
+  `<4.52` pin); `smoke_portallib.py` rewritten to the real `PortalEvaluator` API
+  (+ hosting-safe knobs); new `smoke_refit_portallib.py` for the refit path.
+- **Upstream issues filed** on `ramp-public/portallib` (Tier-1, concise + evidence):
+  [#6](https://github.com/ramp-public/portallib/issues/6) subset eval (+ PR offer),
+  [#7](https://github.com/ramp-public/portallib/issues/7) examples hardcode
+  bf16/`.to(device)` (library itself is placement-agnostic via caller-owned
+  `PortalBase`), [#8](https://github.com/ramp-public/portallib/issues/8) scope
+  question on the intended automation entrypoint. DM'd Ben with the summary.
+- **Notes:** `PortalEvaluator.evaluate(..., portal=)` currently requires the full
+  task tuple (→ #6). Under remoting, a benign `cuBLAS: no current CUDA context`
+  warning appears then recovers. smolvm local-tar `-v` mounts of guest *outputs*
+  were flaky (stdout-only); HF-cache `-v` and bare docker `-v` worked.
+
 ## 2026-07-15 (later) — #636 closed; stock min → v1.6.2 on 22.04
 
 - Upstream merged [#644](https://github.com/smol-machines/smolvm/pull/644) (rebuild

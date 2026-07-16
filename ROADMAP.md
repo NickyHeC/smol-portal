@@ -205,16 +205,25 @@ Make smol-portal run Ramp's `portallib` unmodified inside a smolvm CUDA microVM.
    the engine is available.
 
 **When portallib lands (end of week, per Ben):**
-4. Read it end-to-end; confirm the train/port/eval API + artifact shapes.
-5. Run one task **in-VM**; capture any smolvm-hostile ops (bf16, flash-attn,
-   `torch.compile`, multi-GPU) → file issues/PRs upstream (offer our `portal.cuda`
-   knobs as a PR).
-6. Thin `pipeline/portal`'s CLI into an **adapter over portallib**; keep our
+4. ✅ Read it end-to-end; confirm the train/port/eval API + artifact shapes.
+   API = library (`PortalCoreTrainer` / `PortalAdapterRefitter` / `PortalEvaluator`
+   / `PortalModel`), no CLI. Verified 2026-07-15 on `portallib==0.1.0`.
+5. ✅ Run in-VM (2026-07-15, Lambda A10, smolvm v1.6.2): eval (T2) + tiny refit
+   (T4) through remoted CUDA with fp32 + math SDPA + `device_map="cuda"`. Filed
+   upstream [#6](https://github.com/ramp-public/portallib/issues/6) (subset eval,
+   +PR offer), [#7](https://github.com/ramp-public/portallib/issues/7) (examples
+   bf16/`.to(device)`), [#8](https://github.com/ramp-public/portallib/issues/8)
+   (automation entrypoint scope). bf16/fused SDPA already known-good on A10
+   (Track A); library is placement-agnostic so no `portal.cuda`-style knobs needed
+   in the engine itself — only the example recipe hardcodes bf16.
+6. ⏳ Thin `pipeline/portal`'s CLI into an **adapter over portallib**; keep our
    artifact/content-address + orchestration layer on top. Retire our ML internals
-   once the hosted engine passes hosting-fidelity.
+   once the hosted engine passes hosting-fidelity. (Depends on #8 answer.)
 
-**Hosting-fidelity DoD:** `portallib` runs a `portallib-tasks` task inside smolvm
-and reproduces its bare-metal `acc_norm` within tolerance.
+**Hosting-fidelity DoD:** ✅ **met (2026-07-15)** — smoke (T2/T3, 1.7B, Δacc = 0) and
+real-scale (T5a, published 8B on H100, Δacc = 0). Train path at scale also green:
+**T5b** 1000-ex/task refit `portal-qwen3-4b` → Qwen3-8B in smolvm (bf16; acc_norm
+0.680 → 0.785). T5c dual-source train remains optional paper repro only.
 
 #### GPU test plan (Lambda, runnable now — de-risks hosting ahead of the drop)
 
