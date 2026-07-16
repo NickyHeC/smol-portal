@@ -101,7 +101,13 @@ def main() -> None:
         "--hosting-safe",
         action=argparse.BooleanOptionalAction,
         default=os.environ.get("PORTALLIB_HOST") == "smolvm",
-        help="fp32 + math SDPA + device_map=cuda (default on when PORTALLIB_HOST=smolvm).",
+        help="fp32 + device_map=cuda (default on when PORTALLIB_HOST=smolvm).",
+    )
+    parser.add_argument(
+        "--math-sdpa",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Force math-only SDPA (default: on with --hosting-safe, else off/fused).",
     )
     parser.add_argument(
         "--dry-run",
@@ -109,6 +115,7 @@ def main() -> None:
         help="Import portallib + load dataset slice only; skip model download/eval.",
     )
     args = parser.parse_args()
+    math_sdpa = args.hosting_safe if args.math_sdpa is None else args.math_sdpa
 
     try:
         import portallib
@@ -129,6 +136,7 @@ def main() -> None:
                 "task": args.task,
                 "max_examples": args.max_examples,
                 "hosting_safe": args.hosting_safe,
+                "math_sdpa": math_sdpa,
                 "host": os.environ.get("PORTALLIB_HOST", "unknown"),
             }
         ),
@@ -149,11 +157,15 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"cuda_available={torch.cuda.is_available()} device={device}", flush=True)
     if args.hosting_safe:
-        _apply_hosting_knobs(force_fp32=True, math_sdpa=device.type == "cuda")
+        _apply_hosting_knobs(force_fp32=True, math_sdpa=math_sdpa and device.type == "cuda")
         dtype = torch.float32
     else:
+        if math_sdpa and device.type == "cuda":
+            _apply_hosting_knobs(force_fp32=False, math_sdpa=True)
         dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
         print(f"dtype: {dtype}", flush=True)
+    if device.type == "cuda" and not math_sdpa:
+        print("sdpa: fused allowed (flash/mem_efficient)", flush=True)
 
     portal = PortalModel.from_pretrained(args.artifact, revision=args.artifact_revision)
     if portal.config.base_model_name_or_path != args.base_id:
@@ -192,6 +204,7 @@ def main() -> None:
         "tasks": list(tasks),
         "max_examples": args.max_examples,
         "hosting_safe": args.hosting_safe,
+        "math_sdpa": math_sdpa,
         "device": str(device),
         "dtype": str(dtype),
         "base": base_result.to_dict(),
