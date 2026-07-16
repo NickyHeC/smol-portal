@@ -169,17 +169,20 @@ PorTAL is the orchestration layer; the microVM + CUDA remoting live in
 the smolvm host process (process-level GPU isolation).
 
 **Requirements**
-- **smolvm ≥ 1.6.2** (recommended) or **≥ 1.5.2**, with CUDA shims present in
-  `agent-rootfs/usr/local/lib/smolvm-cuda/` (`libcuda.so.1`, `libcudart-shim.so`).
-  Shim build must match the smolvm version.
+- **smolvm ≥ 1.6.4** (recommended) — first stock release that **bundles the CUDA
+  shims** in `agent-rootfs/usr/local/lib/smolvm-cuda/` (`libcuda.so.1`,
+  `libcudart-shim.so`, `proto-hash`) plus `usr/local/bin/smolvm-cuda-run`, so
+  `--cuda` works out of the box ([#601](https://github.com/smol-machines/smolvm/pull/601)
+  shipped, [#596](https://github.com/smol-machines/smolvm/issues/596) fixed).
+  Verified in the v1.6.4 x86_64 tarball (proto-hash `5d02ce61f2967c40`, glibc
+  floor 2.34). Shim build must match the smolvm version.
+  **Older releases (≥ 1.5.2, and 1.6.2/1.6.3):** usable, but stock tarballs
+  **through v1.6.3 omit the CUDA shims** — build + copy them from the matching
+  tag (see `examples/smolvm/`).
   **Ubuntu 22.04 / glibc 2.35:** use **v1.6.2+** or **v1.5.2**. Stock **v1.6.0 /
   v1.6.1** `libkrun.so` floors at **GLIBC_2.39** and will not boot
   ([smol-machines/smolvm#636](https://github.com/smol-machines/smolvm/issues/636),
   fixed in [#644](https://github.com/smol-machines/smolvm/pull/644) / v1.6.2).
-  **Stock release tarballs through v1.6.3 still omit CUDA shims** ([#596](https://github.com/smol-machines/smolvm/issues/596));
-  build+copy them from the matching tag (see `examples/smolvm/`). [#601](https://github.com/smol-machines/smolvm/pull/601)
-  (merged on `main`) will land that bundling in a *future* release — do not
-  assume “≥ 1.6.3 ⇒ no manual shim install.”
 - **Worker image** `portal-cuda.tar` — pre-bakes pip `torch` (CUDA build) so
   smolvm's staging interposes its shims at image-pull time. Libraries installed
   *after* launch are invisible to staging.

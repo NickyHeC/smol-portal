@@ -223,7 +223,13 @@ Make smol-portal run Ramp's `portallib` unmodified inside a smolvm CUDA microVM.
 **Hosting-fidelity DoD:** ✅ **met (2026-07-15)** — smoke (T2/T3, 1.7B, Δacc = 0) and
 real-scale (T5a, published 8B on H100, Δacc = 0). Train path at scale also green:
 **T5b** 1000-ex/task refit `portal-qwen3-4b` → Qwen3-8B in smolvm (bf16; acc_norm
-0.680 → 0.785). T5c dual-source train remains optional paper repro only.
+0.680 → 0.785). **T5c-short** dual-source (1.7B+4B, H100, 2026-07-16) also green
+(macro 0.615→0.695 over 2 epochs); full paper dual-source / Gemma remains
+optional science only. Overnight follow-up: 8B math RTE 1000-ex eval PASS
+(0.783→0.910). Fresh 8B A/B/C matrix (H100, 2026-07-16): fused smolvm == bare
+fused == math (all PASS, Δacc=0) — earlier "fused 8B hangs" was flaky, not a
+fixed defect. smolvm **v1.6.4** now bundles CUDA shims out of the box (#601
+shipped / #596 fixed).
 
 #### GPU test plan (Lambda, runnable now — de-risks hosting ahead of the drop)
 
@@ -270,7 +276,7 @@ live in `portal.cuda` and `examples/smolvm/`; remove them as upstream lands fixe
 
 | smolvm issue | Symptom that blocked us | Our workaround |
 |---|---|---|
-| [#596](https://github.com/smol-machines/smolvm/issues/596) release ships `agent-rootfs` without CUDA shims | `torch.cuda.is_available()==False` (err 801) on stock v1.5.0 tarball | build shims from source, copy into `agent-rootfs/usr/local/lib/smolvm-cuda/` |
+| [#596](https://github.com/smol-machines/smolvm/issues/596) release ships `agent-rootfs` without CUDA shims | `torch.cuda.is_available()==False` (err 801) on stock ≤v1.6.3 tarballs | **Fixed in v1.6.4** ([#601](https://github.com/smol-machines/smolvm/pull/601) bundles shims — verified in-tarball). Manual shim build only for stock ≤1.6.3 |
 | [#597](https://github.com/smol-machines/smolvm/issues/597) fused SDPA backward | `loss.backward()` → `CUDA error: invalid argument` on **v1.5.0** | **Fixed in v1.5.2** (issue closed). Math SDPA workaround still default in `portal.cuda`; use `PORTAL_SKIP_CUDA_SMOLVM=1` on 1.5.2+ |
 | [#598](https://github.com/smol-machines/smolvm/issues/598) auto-staging is pull-time + `site-packages/nvidia/`-only, undocumented | conda / runtime-`pip install torch` images silently loaded real 109 MB cuBLAS | pre-bake pip torch into `portal-cuda.tar` so wheels exist at pull time |
 

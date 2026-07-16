@@ -8,16 +8,35 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-15 evening — smolvm **#601 from-main** on cloud A10:
-packaged rootfs (no hand shim cp) → `cuda: True`; portallib 1.7B×14×8 smoke
-macro 0.607→0.741. Stock **v1.6.3** still ships **no** CUDA shims (#601 missed
-that cut). **Preferred stock release: v1.6.2+** for glibc; keep the manual shim
-step until a release includes #601. Prior: v1.6.0 hosting de-risk + §9e; PorTAL
-e2e 2026-07-13 on **v1.5.2**.
+**Last validated:** 2026-07-16 — portallib connector DoD closed on A10 (1.7B) +
+H100 (8B). A10: #601 from-main remoting + `portallib==0.1.2` smokes. H100:
+T5a/T5b/T5c-short + 8B math RTE 1000-ex PASS. Fresh 8B A/B/C matrix (H100):
+math retry, fused smolvm, and bare fused all PASS (identical 0.689→0.781); one
+math attempt hung once (flaky, not filed).
+**smolvm v1.6.4 ships CUDA shims out of the box** (#601 shipped / #596 fixed —
+verified in the v1.6.4 tarball: `smolvm-cuda-run` + `libcudart-shim.so` +
+`libcuda.so.1`, proto-hash `5d02ce61f2967c40`, glibc floor 2.34). On **v1.6.4+
+you can skip the manual shim-copy block**; keep it only for stock ≤1.6.3.
+*(v1.6.4 shims verified in-tarball; GPU re-validation pending next box.)*
 
-**Bootstrap version:** set `VER=1.6.2` (or newer) on Ubuntu 22.04. Historical §1–§5
-/ §9 blocks may still say `1.5.2` or `1.6.0`. **Avoid stock 1.6.0 / 1.6.1** on
-22.04 unless you apply §9e. Do **not** skip the shim-copy block for stock ≤1.6.3.
+**GPU sizing (pick the box for the job):**
+
+| Workload | Typical box | Guest RAM |
+|----------|-------------|-----------|
+| 1.7B smoke eval / tiny refit / PorTAL e2e | A10 22GB | `--mem 16384` |
+| Published **8B fp32** hosting-safe eval | ~80GB (H100-class) | `--mem 65536` |
+| **8B bf16** refit / dual-source short train | ~80GB | `--mem 65536` |
+| 8B under remoting | math or fused | 8B A/B/C matrix all PASS; hangs seen are flaky, kill at 0%-util/VRAM-held >20 min |
+
+Bake `portallib[training]==0.1.2` into `portallib-cuda` (subset eval + normalized
+dataset). Pin dataset revision `ffc3c0e44f529bf64a5ae62ed5db090952db97ea` with
+0.1.1+.
+
+**Bootstrap version:** set `VER=1.6.4` (or newer) on Ubuntu 22.04 — v1.6.4 bundles
+the CUDA shims, so you can **skip the manual shim-copy block** entirely. Historical
+§1–§5 / §9 blocks may still say `1.5.2` / `1.6.0` / `1.6.2`. **Avoid stock 1.6.0 /
+1.6.1** on 22.04 unless you apply §9e. Only stock **≤1.6.3** still needs the
+shim-copy block.
 
 | Resource | Path |
 |----------|------|

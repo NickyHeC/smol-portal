@@ -4,7 +4,7 @@
 #
 # Build:
 #   docker build -f examples/smolvm/Dockerfile.portallib-cuda \
-#     --build-arg PORTALLIB_SPEC='portallib[training]==0.1.0' \
+#     --build-arg PORTALLIB_SPEC='portallib[training]==0.1.2' \
 #     -t portallib-cuda .
 #   docker save portallib-cuda -o portallib-cuda.tar
 #
@@ -13,7 +13,7 @@
 #     --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
 #
 # Pin a git ref instead of PyPI:
-#   --build-arg PORTALLIB_SPEC='git+https://github.com/ramp-public/portallib.git@v0.1.0'
+#   --build-arg PORTALLIB_SPEC='git+https://github.com/ramp-public/portallib.git@v0.1.2'
 
 FROM python:3.11-slim-bookworm
 
@@ -26,8 +26,8 @@ RUN apt-get update \
 RUN pip install --no-cache-dir torch \
     --index-url https://download.pytorch.org/whl/cu124
 
-# Match portallib[training]==0.1.0 extras (transformers>=4.52,<6; peft>=0.15).
-# Do NOT reuse the legacy portal pin transformers<4.52 — it conflicts with 0.1.0.
+# Match portallib[training]==0.1.2 extras (transformers>=4.52,<6; peft>=0.15).
+# Do NOT reuse the legacy portal pin transformers<4.52 — it conflicts with 0.1.x.
 RUN pip install --no-cache-dir \
     "transformers>=4.52,<6" \
     "peft>=0.15,<1" \
@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir \
     "safetensors>=0.4,<1"
 
 # Engine. Prefer the PyPI training extra so transformers/peft ranges stay aligned.
-ARG PORTALLIB_SPEC="portallib[training]==0.1.0"
+ARG PORTALLIB_SPEC="portallib[training]==0.1.2"
 ARG INSTALL_PORTALLIB=1
 RUN if [ "${INSTALL_PORTALLIB}" = "1" ]; then \
       pip install --no-cache-dir "${PORTALLIB_SPEC}"; \

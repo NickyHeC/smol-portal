@@ -5,6 +5,99 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
+## 2026-07-16 (afternoon) — portallib 0.1.2/0.2.0: issues resolved upstream, CLI reviewed
+
+- **Ramp shipped fast.** `portallib` **0.1.1 → 0.1.2** (PyPI) landed our filed
+  issues: [#6](https://github.com/ramp-public/portallib/issues/6) subset eval,
+  [#7](https://github.com/ramp-public/portallib/issues/7) recipe dtype/device_map,
+  [#9](https://github.com/ramp-public/portallib/issues/9) WinoGrande boundaries —
+  all closed by their PR #10. COMPUTE.md now documents the fp32+`device_map=cuda`+
+  `sdpa` hosting recipe inline; REPRODUCING lists non-reentrant checkpointing.
+- **0.1.2 re-validation (Lambda A10, smolvm main `b31b405b` + #601 rootfs):**
+  - Full 14×8 hosting-safe eval macro **0.607 → 0.741** (+0.134) — matches prior
+    0.1.0 numbers on the normalized dataset (`ffc3c0e…`).
+  - Recipe-knobs path (0.1.1 `dtype`/`device_map`/`attn_implementation` only, no
+    wrapper) == our old wrapper == bare `docker --gpus` twin at **Δacc = 0**. So
+    the documented recipe knobs are sufficient; a "hosting-safe" convenience
+    switch adds nothing → **won't file**.
+  - Subset eval (`winogrande,rte`) works.
+- **#14 filed → Ramp PR'd.** Reproduced the benign `cuBLAS: no current CUDA
+  context` warning (smolvm remoting only; **absent** on bare twin); filed
+  [#14](https://github.com/ramp-public/portallib/issues/14). Ramp opened
+  [PR #15](https://github.com/ramp-public/portallib/pull/15) (guarded device-scoped
+  warmup in `load_base`) — matches our proposal.
+- **#8 CLI → Ramp PR'd.** Nudged [#8](https://github.com/ramp-public/portallib/issues/8)
+  with the subprocess-across-VM context; Ramp opened
+  [PR #13](https://github.com/ramp-public/portallib/pull/13) — config-driven
+  `portallib train|refit|evaluate|validate` over strict TOML recipes, JSONL
+  `epoch`/`result`/`error` events, exit codes 0/1/2, per-base dtype/device_map/attn,
+  credential rejection; bumps to **0.2.0** (additive). Reviewed + validated:
+  built the 0.2.0 image from the PR branch and ran the installed `portallib`
+  entrypoint end-to-end in **two sandboxes on one A10** — bare `docker --gpus`
+  and a smolvm microVM, same TOML recipe → **Δacc = 0** (0.607→0.741 both), plus
+  `validate`/exit-code surface checks. Review comment posted; asked for a
+  provider-neutral `--config -` (stdin) + headless path-resolution mode.
+- **Connector:** `examples/smolvm/Dockerfile.portallib-cuda` → `0.1.2`;
+  `smoke_portallib.py` gained `--tasks` subset + `--recipe-knobs` + normalized
+  dataset pin. Private detail: `smolvm-notes/portallib-{watch,feedback}.md`,
+  `portallib-t0t1/lambda-artifacts/{t012,cli}-2026-07-16/`.
+
+## 2026-07-16 (eve) — smolvm v1.6.4 ships CUDA shims out of the box; portallib CLI+warmup merged
+
+- **smolvm v1.6.4 released — first stock tarball that bundles the CUDA shims.**
+  Verified by downloading `smolvm-1.6.4-linux-x86_64.tar.gz` and inspecting:
+  `agent-rootfs/usr/local/lib/smolvm-cuda/{libcuda.so.1,libcudart-shim.so,proto-hash}`
+  + `bin/smolvm-cuda-run` all present; **proto-hash `5d02ce61f2967c40`** matches
+  the known-good #601 build; glibc floor 2.34 (safe on 22.04). This ships
+  [#601](https://github.com/smol-machines/smolvm/pull/601) and fixes
+  [#596](https://github.com/smol-machines/smolvm/issues/596) — `--cuda` now works
+  with **no manual shim build**. Docs bumped to **≥ 1.6.4** (SPEC/AGENTS/runbooks).
+  GPU re-validation of the stock v1.6.4 tarball is **pending** (box terminated) —
+  next box: run the CUDA gate with the shim-copy block skipped.
+- **portallib upstream all landed:** [#8](https://github.com/ramp-public/portallib/issues/8)
+  and [#14](https://github.com/ramp-public/portallib/issues/14) **CLOSED**;
+  [PR #13](https://github.com/ramp-public/portallib/pull/13) (config-driven CLI,
+  → 0.2.0) and [PR #15](https://github.com/ramp-public/portallib/pull/15) (CUDA
+  context warmup in `load_base`) both **MERGED**. **PyPI still 0.1.2** — CLI +
+  warmup not yet released, so worker images stay on `portallib[training]==0.1.2`
+  (which is why the benign cuBLAS-context warning still showed in the eve 8B run).
+  No open action; PR #13 stdin `--config -` ask got no response and the PR merged
+  without it — drop unless Ramp revisits.
+
+## 2026-07-16 (eve) — fresh H100 8B matrix: A/B/C metrics match; hang flaky
+
+- **Box:** H100 80GB, smolvm **v1.6.2** + matching shims, `portallib==0.1.2`,
+  `portal-qwen3-8b@v0.1.0` × Qwen3-8B, 14×64, hosting-safe fp32, `--mem 65536`.
+- **Results:** B fused smolvm **PASS**, C bare fused **PASS**, A math retry
+  **PASS** — all three **0.689 → 0.781** (lift +0.092, Δacc=0). Matmul probe
+  **PASS** (cuBLAS context warn present).
+- **One flaky hang:** first A math attempt sat at ~34 GiB / util=0 / ~119 W for
+  ≥27 min (killed). Immediate A retry completed. Overnight fused hangs look
+  similarly non-deterministic — **do not file** a fused-only or math-only issue
+  until a hard cold-box repro.
+- Private: `smolvm-notes/portallib-t0t1/lambda-artifacts/fused8b-2026-07-16/`
+  (+ `DRAFT-smolvm-issue.md` marked HOLD).
+
+## 2026-07-16 — H100 overnight close-out; 1000-ex math PASS; fused 8B abandoned
+
+- **Box:** Lambda 1× H100 80GB, smolvm **v1.6.2**. No remaining *required* H100
+  work for connector DoD — safe to terminate. A10 covers day-to-day smokes.
+- **T5c-short** (dual-source 1.7B+4B, bf16, 2 epochs × 100 steps): **PASS** —
+  macro acc_norm **0.615 → 0.663 → 0.695**, NLL 4.33 → 1.53 (~20 min). Full
+  paper T5c (12×500) had hung overnight earlier; not retried (optional science).
+- **Fused SDPA 8B×64 (overnight):** hung **twice** (~35 GiB, 0% util, ~120 W).
+  **Superseded by eve matrix above** — fused twin now PASS; math hung once.
+- **1000-ex math RTE focus:** **PASS** (~5 min). Needed in-guest
+  `portallib==0.1.2` (image was still 0.1.0 — subset portal eval + normalized
+  dataset `ffc3c0e…`). RTE n=277 (val capped): base **0.783 → portal 0.910**
+  (Δ **+0.126**); NLL 0.935 → 0.634. Bake **0.1.2** into worker images going
+  forward (`Dockerfile.portallib-cuda` already defaults there).
+- **Ops learnings:** pin dataset revision to the installed portallib; kill
+  remoting jobs that sit at 0% util with VRAM held >15–20 min after load;
+  virtiofs guest-root artifact writes can miss the host — recover JSON from
+  stdout. Prefer `--mem 65536` + bf16 for 8B train/refit (fp32 8B refit hung).
+- Private detail: `smolvm-notes/portallib-t0t1/overnight-results.md`.
+
 ## 2026-07-15 (late) — smolvm #601 validated from main on A10; stock v1.6.3 still ships no CUDA shims
 
 - **smolvm #601** (bundle CUDA shims + `smolvm-cuda-run` in agent-rootfs) **merged**

@@ -28,7 +28,8 @@ from pathlib import Path
 
 
 DEFAULT_DATASET = "RampPublic/portallib-tasks"
-DEFAULT_DATASET_REVISION = "d35f1e8a813cfae662166164fc25965a31b01ae0"
+# Normalized dataset from portallib 0.1.1 (#10); prior d35f1e8a… had WinoGrande boundary bugs.
+DEFAULT_DATASET_REVISION = "ffc3c0e44f529bf64a5ae62ed5db090952db97ea"
 DEFAULT_ARTIFACT = "RampPublic/portal-qwen3-1.7b"
 DEFAULT_ARTIFACT_REVISION = "v0.1.0"
 DEFAULT_BASE_ID = "Qwen/Qwen3-1.7B"
@@ -38,9 +39,14 @@ DEFAULT_TASK = "rte"
 
 @dataclass(frozen=True)
 class BaseRecipe:
+    """Mirrors portallib examples.utils.loading.BaseRecipe (0.1.1+)."""
+
     model_id: str
     revision: str
     layer_path: str = "model.layers"
+    dtype: object | None = None
+    device_map: str | None = None
+    attn_implementation: str | None = None
 
 
 def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
@@ -59,7 +65,7 @@ def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
         print("dtype: fp32 (hosting-safe)", flush=True)
 
 
-def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool):
+def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool, recipe_knobs: bool):
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from portallib import PortalBase
 
@@ -67,13 +73,33 @@ def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool):
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Bulk ``.to("cuda")`` has failed on remoted CUDA; prefer incremental map.
-    kwargs: dict = {"revision": recipe.revision, "torch_dtype": dtype}
-    if hosting_safe and device.type == "cuda":
-        kwargs["device_map"] = "cuda"
+    # portallib 0.1.1+ examples use ``dtype=`` (not torch_dtype) + optional device_map /
+    # attn_implementation, and skip bulk ``.to(device)`` when device_map is set.
+    if recipe_knobs:
+        kwargs: dict = {
+            "revision": recipe.revision,
+            "dtype": recipe.dtype or dtype,
+        }
+        if recipe.device_map is not None:
+            kwargs["device_map"] = recipe.device_map
+        if recipe.attn_implementation is not None:
+            kwargs["attn_implementation"] = recipe.attn_implementation
         model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs)
+        if recipe.device_map is None:
+            model = model.to(device)
+        print(
+            f"load: recipe-knobs dtype={kwargs['dtype']} "
+            f"device_map={recipe.device_map!r} attn={recipe.attn_implementation!r}",
+            flush=True,
+        )
     else:
-        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs).to(device)
+        # Legacy hosting-safe path (pre-0.1.1 wrapper).
+        kwargs = {"revision": recipe.revision, "torch_dtype": dtype}
+        if hosting_safe and device.type == "cuda":
+            kwargs["device_map"] = "cuda"
+            model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs).to(device)
 
     return PortalBase(
         model_id=recipe.model_id,
@@ -92,7 +118,13 @@ def main() -> None:
     parser.add_argument("--artifact-revision", default=DEFAULT_ARTIFACT_REVISION)
     parser.add_argument("--base-id", default=DEFAULT_BASE_ID)
     parser.add_argument("--base-revision", default=DEFAULT_BASE_REVISION)
-    parser.add_argument("--task", default=DEFAULT_TASK)
+    parser.add_argument("--task", default=DEFAULT_TASK, help="Focus task for lift printout.")
+    parser.add_argument(
+        "--tasks",
+        default=None,
+        help="Comma-separated task subset to evaluate (portallib≥0.1.1). "
+        "Default: all artifact tasks. Use 'focus' to evaluate only --task.",
+    )
     parser.add_argument("--max-examples", type=int, default=8)
     parser.add_argument("--eval-batch-size", type=int, default=1)
     parser.add_argument("--max-prompt", type=int, default=512)
@@ -110,12 +142,21 @@ def main() -> None:
         help="Force math-only SDPA (default: on with --hosting-safe, else off/fused).",
     )
     parser.add_argument(
+        "--recipe-knobs",
+        action="store_true",
+        help="Load base via portallib 0.1.1-style BaseRecipe dtype/device_map/"
+        "attn_implementation only (no torch.backends SDPA wrapper). For #5 probe.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Import portallib + load dataset slice only; skip model download/eval.",
     )
     args = parser.parse_args()
     math_sdpa = args.hosting_safe if args.math_sdpa is None else args.math_sdpa
+    if args.recipe_knobs:
+        # Recipe-knobs path: do not apply torch.backends math-SDPA forcing unless asked.
+        math_sdpa = False if args.math_sdpa is None else args.math_sdpa
 
     try:
         import portallib
@@ -123,7 +164,7 @@ def main() -> None:
     except ImportError as exc:
         raise SystemExit(
             "portallib is not importable. Rebuild Dockerfile.portallib-cuda with "
-            "PORTALLIB_SPEC='portallib[training]==0.1.0'."
+            "PORTALLIB_SPEC='portallib[training]==0.1.2'."
         ) from exc
 
     print(
@@ -134,9 +175,12 @@ def main() -> None:
                 "artifact_revision": args.artifact_revision,
                 "base": args.base_id,
                 "task": args.task,
+                "tasks_arg": args.tasks,
                 "max_examples": args.max_examples,
                 "hosting_safe": args.hosting_safe,
                 "math_sdpa": math_sdpa,
+                "recipe_knobs": args.recipe_knobs,
+                "dataset_revision": args.dataset_revision,
                 "host": os.environ.get("PORTALLIB_HOST", "unknown"),
             }
         ),
@@ -146,7 +190,7 @@ def main() -> None:
     dataset = ChoiceDataset.from_hub(args.dataset, revision=args.dataset_revision)
     if args.task not in dataset.tasks:
         raise SystemExit(f"task={args.task!r} not in dataset tasks={list(dataset.tasks)}")
-    print(f"dataset tasks={len(dataset.tasks)}; using {args.task!r}", flush=True)
+    print(f"dataset tasks={len(dataset.tasks)}; focus={args.task!r}", flush=True)
 
     if args.dry_run:
         print("dry-run ok (import + dataset only)", flush=True)
@@ -156,7 +200,14 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"cuda_available={torch.cuda.is_available()} device={device}", flush=True)
-    if args.hosting_safe:
+    if args.recipe_knobs:
+        dtype = torch.float32 if args.hosting_safe else (
+            torch.bfloat16 if device.type == "cuda" else torch.float32
+        )
+        if math_sdpa and device.type == "cuda":
+            _apply_hosting_knobs(force_fp32=False, math_sdpa=True)
+        print(f"dtype: {dtype} (recipe-knobs mode)", flush=True)
+    elif args.hosting_safe:
         _apply_hosting_knobs(force_fp32=True, math_sdpa=math_sdpa and device.type == "cuda")
         dtype = torch.float32
     else:
@@ -165,7 +216,7 @@ def main() -> None:
         dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
         print(f"dtype: {dtype}", flush=True)
     if device.type == "cuda" and not math_sdpa:
-        print("sdpa: fused allowed (flash/mem_efficient)", flush=True)
+        print("sdpa: fused/sdpa allowed (no math-only force)", flush=True)
 
     portal = PortalModel.from_pretrained(args.artifact, revision=args.artifact_revision)
     if portal.config.base_model_name_or_path != args.base_id:
@@ -176,15 +227,37 @@ def main() -> None:
     if args.task not in portal.config.tasks:
         raise SystemExit(f"task={args.task!r} not in artifact tasks={list(portal.config.tasks)}")
 
-    recipe = BaseRecipe(args.base_id, args.base_revision)
+    if args.recipe_knobs:
+        recipe = BaseRecipe(
+            args.base_id,
+            args.base_revision,
+            dtype=dtype,
+            device_map="cuda" if device.type == "cuda" and args.hosting_safe else None,
+            attn_implementation="sdpa" if device.type == "cuda" else None,
+        )
+    else:
+        recipe = BaseRecipe(args.base_id, args.base_revision)
     print(f"loading base {recipe.model_id}@{recipe.revision} …", flush=True)
-    base = _load_base(recipe, device=device, dtype=dtype, hosting_safe=args.hosting_safe)
+    base = _load_base(
+        recipe,
+        device=device,
+        dtype=dtype,
+        hosting_safe=args.hosting_safe,
+        recipe_knobs=args.recipe_knobs,
+    )
 
     evaluator = PortalEvaluator(max_prompt=args.max_prompt, batch_size=args.eval_batch_size)
-    # PortalEvaluator requires portal.config.tasks order when portal= is set.
-    # Smoke still uses --task for a focused lift printout; metrics cover all tasks.
-    tasks = tuple(portal.config.tasks)
-    print(f"evaluating base floor over {len(tasks)} tasks (max_examples={args.max_examples}) …", flush=True)
+    # portallib≥0.1.1: any artifact-contained subset is allowed.
+    if args.tasks is None:
+        tasks = tuple(portal.config.tasks)
+    elif args.tasks.strip().lower() == "focus":
+        tasks = (args.task,)
+    else:
+        tasks = tuple(t.strip() for t in args.tasks.split(",") if t.strip())
+        missing = [t for t in tasks if t not in portal.config.tasks]
+        if missing:
+            raise SystemExit(f"tasks not in artifact: {missing}; have {list(portal.config.tasks)}")
+    print(f"evaluating base floor over {len(tasks)} tasks {tasks!r} (max_examples={args.max_examples}) …", flush=True)
     base_result = evaluator.evaluate(base, dataset, tasks=tasks, max_examples=args.max_examples)
     print("evaluating portal-adapted …", flush=True)
     portal_result = evaluator.evaluate(
