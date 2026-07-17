@@ -8,16 +8,13 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-16 — portallib connector DoD closed on A10 (1.7B) +
-H100 (8B). A10: #601 from-main remoting + `portallib==0.1.2` smokes. H100:
-T5a/T5b/T5c-short + 8B math RTE 1000-ex PASS. Fresh 8B A/B/C matrix (H100):
-math retry, fused smolvm, and bare fused all PASS (identical 0.689→0.781); one
-math attempt hung once (flaky, not filed).
-**smolvm v1.6.4 ships CUDA shims out of the box** (#601 shipped / #596 fixed —
-verified in the v1.6.4 tarball: `smolvm-cuda-run` + `libcudart-shim.so` +
-`libcuda.so.1`, proto-hash `5d02ce61f2967c40`, glibc floor 2.34). On **v1.6.4+
-you can skip the manual shim-copy block**; keep it only for stock ≤1.6.3.
-*(v1.6.4 shims verified in-tarball; GPU re-validation pending next box.)*
+**Last validated:** 2026-07-17 — stock **smolvm v1.6.8** on A10: CUDA gate
+`cuda: True` with **no manual shim copy**; warm `--cuda --forkable` machine
+fork + clone matmul PASS (~1 s). Prior (2026-07-16): portallib connector DoD
+on A10 (1.7B) + H100 (8B); 8B A/B/C matrix PASS with one flaky hang (not filed).
+**smolvm ≥ v1.6.4 ships CUDA shims out of the box** (#601 / #596). Prefer latest
+stable (currently **1.6.8**); skip the manual shim-copy block on **v1.6.4+**;
+keep it only for stock ≤1.6.3.
 
 **GPU sizing (pick the box for the job):**
 
@@ -32,9 +29,9 @@ Bake `portallib[training]==0.1.2` into `portallib-cuda` (subset eval + normalize
 dataset). Pin dataset revision `ffc3c0e44f529bf64a5ae62ed5db090952db97ea` with
 0.1.1+.
 
-**Bootstrap version:** set `VER=1.6.4` (or newer) on Ubuntu 22.04 — v1.6.4 bundles
-the CUDA shims, so you can **skip the manual shim-copy block** entirely. Historical
-§1–§5 / §9 blocks may still say `1.5.2` / `1.6.0` / `1.6.2`. **Avoid stock 1.6.0 /
+**Bootstrap version:** set `VER=1.6.8` (or any ≥1.6.4) on Ubuntu 22.04 — shims
+are bundled, so **skip the manual shim-copy block**. Historical §1–§5 / §9
+blocks may still say `1.5.2` / `1.6.0` / `1.6.2` / `1.6.4`. **Avoid stock 1.6.0 /
 1.6.1** on 22.04 unless you apply §9e. Only stock **≤1.6.3** still needs the
 shim-copy block.
 

@@ -5,17 +5,56 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ---
 
-## Next session (2026-07-17) — plan
+## Next session
 
-A10 is enough; no H100. Detail / checkboxes live in private
-`smolvm-notes/github-action-items.md` § “Plan for 2026-07-17”.
+Watch portallib **0.2.0** PyPI (bump `Dockerfile.portallib-cuda` + re-validate CLI
+when it lands). On any future cold GPU box, capture a `SMOLVM_CUDA_SHIM_TRACE=1` +
+`CUDA_LAUNCH_BLOCKING=1` trace at hang time and attach to smolvm #667.
 
-1. **Primary (next GPU box):** stock **smolvm v1.6.4**, skip manual shim copy,
-   CUDA gate → expect `cuda: True`. Optional portallib 1.7B smoke for continuity.
-2. **Watch:** portallib **0.2.0** PyPI (CLI + warmup merged, not released) →
-   bump Dockerfile pin + re-validate CLI when it lands. Routine daily startup.
-3. **Parked:** 8B hang HOLD (does not meet filing bar); stdin `--config -`
-   dropped; microVM example / hosting-switch still too early.
+## 2026-07-17 (GitHub) — filed smolvm #667 (cold-hang); #602/#638 ready for review
+
+- **smolvm #667 filed** (upstream, sanitized) for the intermittent cold-start guest
+  wedge on the first large fp32 `--cuda` load (Qwen3-8B): VRAM climbs to ~32 GiB
+  then `util=0%` and the guest's `storage.qcow2` writes freeze at the **same** 15 s
+  tick → guest/VMM wedge, not a single stuck forwarded call. Warm retry / fused /
+  bare `docker --gpus` twin all PASS (Δacc=0). Distinct from the closed #597 (this
+  is math SDPA). No fix PR — no root cause and the diagnostic env hooks
+  (`SMOLVM_CUDA_SHIM_TRACE`) already exist upstream; offered to capture a trace on
+  the next cold box.
+- **smolvm #602 + #638 marked ready for review** (were Draft) with a combined
+  re-review comment answering Bin's "continue e2e validation" ask — conda torch
+  e2e PASS (`cuda: True` → matmul → tiny-Llama `backward ok`, no `LD_PRELOAD`);
+  #602 needs #638 to stand alone, so land together. All CI green + mergeable;
+  blocked only on maintainer review.
+- **smolvm #600 (docs)** left untouched to avoid pinging a busy maintainer — green
+  + mergeable, awaiting review; now clearly accurate given stock v1.6.8 validation.
+
+## 2026-07-17 (H100) — 8B hang: cold-box A1 HUNG; A2/B/C PASS (escalate HOLD)
+
+- **Box:** `68.209.75.34` H100 80GB. Stock **smolvm v1.6.8** (no shim copy) +
+  `portallib==0.1.2`. Recipe: `portal-qwen3-8b@v0.1.0` × 14×64 hosting-safe fp32.
+- **A1 (cold, math):** **HUNG** — ~32433 MiB / util=0 / ~122 W ≥20 min. First
+  attempt on a clean box (no prior kills).
+- **A2 (retry, math):** **PASS** 0.689→0.781.
+- **B (smolvm fused):** **PASS** same macros.
+- **C (bare fused):** **PASS** same macros (Δacc=0).
+- Same intermittent pattern as 2026-07-16, now on stock 1.6.8 + cold box →
+  **escalate from HOLD; draft ready to file.** Private:
+  `portallib-t0t1/lambda-artifacts/fused8b-2026-07-17/`.
+
+## 2026-07-17 — stock smolvm v1.6.8: CUDA gate + warm fork PASS (no shim copy)
+
+- **Box:** Lambda A10 `170.9.24.184`. Bootstrap stock **v1.6.8** only — skipped
+  rust/cargo/shim-copy entirely. Shims present; proto-hash `bad42ebad2d839b8`.
+- **CUDA gate:** `machine run --net --cuda` + `portal-cuda.tar` → **`cuda: True`**,
+  device NVIDIA A10, tiny alloc OK. Closes the #596/#601 empirical loop on a
+  post-1.6.4 stock release.
+- **Warm CUDA fork (§1b):** `create --cuda` → `start --forkable` → warm torch
+  (alloc + 256² matmul) → `machine fork` (~**1 s**) → clone `cuda: True` +
+  matmul OK. Tip-of-main (+2 fork commits) not needed.
+- Benign cuBLAS context warn still on first matmul (warmup not on PyPI yet).
+- **Next:** 8B hang follow-up (user). Private detail:
+  `smolvm-notes/smolvm-version-watch.md`, `github-action-items.md`.
 
 ## 2026-07-16 (afternoon) — portallib 0.1.2/0.2.0: issues resolved upstream, CLI reviewed
 

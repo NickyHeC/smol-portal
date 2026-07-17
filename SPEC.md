@@ -175,7 +175,10 @@ the smolvm host process (process-level GPU isolation).
   `--cuda` works out of the box ([#601](https://github.com/smol-machines/smolvm/pull/601)
   shipped, [#596](https://github.com/smol-machines/smolvm/issues/596) fixed).
   Verified in the v1.6.4 x86_64 tarball (proto-hash `5d02ce61f2967c40`, glibc
-  floor 2.34). Shim build must match the smolvm version.
+  floor 2.34). GPU-validated on stock **v1.6.8** (A10, 2026-07-17): CUDA gate +
+  warm `--forkable` fork PASS with no manual shim copy (proto-hash
+  `bad42ebad2d839b8`). Prefer latest ≥1.6.4; shim build must match the smolvm
+  version when building manually.
   **Older releases (≥ 1.5.2, and 1.6.2/1.6.3):** usable, but stock tarballs
   **through v1.6.3 omit the CUDA shims** — build + copy them from the matching
   tag (see `examples/smolvm/`).
