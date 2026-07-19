@@ -200,7 +200,7 @@ Make smol-portal run Ramp's `portallib` unmodified inside a smolvm CUDA microVM.
    published) alongside pinned torch/transformers/peft, pre-baked so smolvm CUDA
    staging interposes shims at pull time.
 2. **Draft API/feature feedback for Ben** (issue-ready) — done: see private
-   `smolvm-notes/portallib-feedback.md`. File as issues/PRs when his code lands.
+   `smolvm-notes/plans/portallib-feedback.md`. File as issues/PRs when his code lands.
 3. **Smoke harness** around one `portallib-tasks` task, ready to run the moment
    the engine is available.
 
@@ -248,7 +248,7 @@ substrate on the new smolvm and probing the ops portallib will need**:
   (`cuda-independent-serving`, `cuda-shim-hygiene`, `cuda-vmresources`) — do they
   change how we install/interpose shims? Note in `smolvm-notes/`.
 
-Detailed runbook lives in `smolvm-notes/portal-reference-plan.md` +
+Detailed runbook lives in `smolvm-notes/plans/portal-reference-plan.md` +
 `examples/smolvm/lambda-instructions.md`.
 
 ### Phase B — Single-VM integration (in progress — CUDA training validated)
@@ -326,7 +326,7 @@ suggest improvements. So:
   `acc_norm` on `portallib-tasks` matches inside a smolvm VM vs. bare metal," not
   reproducing the paper.
 - **Contribute upstream.** Ben asked for feedback — file issue-ready API/hosting
-  suggestions (drafted in `smolvm-notes/portallib-feedback.md`) and offer our
+  suggestions (drafted in `smolvm-notes/plans/portallib-feedback.md`) and offer our
   constrained-backend `portal.cuda` knobs as a PR.
 - **Keep our `pipeline/portal` as legacy fallback** until portallib is confirmed to
   run under smolvm CUDA; then thin the CLI into an adapter over it.

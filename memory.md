@@ -7,9 +7,27 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ## Next session
 
-Watch portallib **0.2.0** PyPI (bump `Dockerfile.portallib-cuda` + re-validate CLI
-when it lands). On any future cold GPU box, capture a `SMOLVM_CUDA_SHIM_TRACE=1` +
-`CUDA_LAUNCH_BLOCKING=1` trace at hang time and attach to smolvm #667.
+1. **Next GPU box:** stock **smolvm v1.6.13** CUDA gate + warm fork (post-1.6.8
+   fork/CUDA churn: #672/#676/#677/#680/#681/#683). Optional cold 8B with
+   `SMOLVM_CUDA_SHIM_TRACE=1` for [#667](https://github.com/smol-machines/smolvm/issues/667).
+2. Watch portallib **0.2.0** PyPI → bump `Dockerfile.portallib-cuda` + re-validate
+   CLI. Also watch their [#16](https://github.com/ramp-public/portallib/pull/16)/[#17](https://github.com/ramp-public/portallib/issues/17)
+   (disk-offload injector — low impact on our `device_map=cuda` recipe).
+
+## 2026-07-19 — daily startup: smolvm → v1.6.13; portallib disk-offload issue; notes reorg
+
+- **smolvm:** FF'd local `main` to upstream tip `7f1d2c55` (was 17 behind). New
+  tags **v1.6.9–v1.6.13**. CUDA/fork surface moved a lot since last GPU-validated
+  **v1.6.8** — escalate re-validation on next box; floor stays ≥1.6.4. Open PRs
+  #600/#602/#638 + issue #667 unchanged.
+- **portallib:** tip unchanged (`2ee19a8`); PyPI still **0.1.2**. New open
+  [#17](https://github.com/ramp-public/portallib/issues/17) + draft PR
+  [#16](https://github.com/ramp-public/portallib/pull/16) (Accelerate disk-offload
+  drops LoRA deltas) — watch only for our connector.
+- **smolvm-notes:** reorganized into `watches/` `runbooks/` `plans/`
+  `sessions/` `artifacts/` `workspaces/` (private README updated). Public path
+  refs in interop/daily-startup rules + ROADMAP adjusted. No raw session dumps
+  promoted — already covered in prior `memory.md` entries.
 
 ## 2026-07-17 (GitHub) — filed smolvm #667 (cold-hang); #602/#638 ready for review
 

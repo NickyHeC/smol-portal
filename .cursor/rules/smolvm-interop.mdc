@@ -23,10 +23,10 @@ three, and put each kind of content in the right one.
 **Flow:** _private source (notes) → distill → public product (smol-portal); runtime bugs → smolvm → upstream._
 
 **Sync pairs** (keep both sides in step; sanitize on the way *out* to public):
-- `smolvm-notes/lambda-instructions.md` (canonical/private) ↔ `smol-portal/examples/smolvm/lambda-instructions.md` (sanitized, `OWNER` placeholder, no keys).
-- `smolvm-notes/{cuda-build-plan,github-action-items}.md` (raw logs) → `smol-portal/memory.md` (public summary).
-- `smolvm-notes/portal-reference-plan.md` (detailed plans) → `smol-portal/ROADMAP.md` (public phase plan).
-- `smolvm-notes/port_e2e_lambda.py` ↔ `smol-portal/examples/smolvm/port_e2e.py` (de-anonymized).
+- `smolvm-notes/runbooks/lambda-instructions.md` (canonical/private) ↔ `smol-portal/examples/smolvm/lambda-instructions.md` (sanitized, `OWNER` placeholder, no keys).
+- `smolvm-notes/plans/cuda-build-plan.md` + `watches/github-action-items.md` (raw logs) → `smol-portal/memory.md` (public summary).
+- `smolvm-notes/plans/portal-reference-plan.md` (detailed plans) → `smol-portal/ROADMAP.md` (public phase plan).
+- `smolvm-notes/runbooks/port_e2e_lambda.py` ↔ `smol-portal/examples/smolvm/port_e2e.py` (de-anonymized).
 
 ## Mandatory workflow
 
@@ -40,7 +40,7 @@ three, and put each kind of content in the right one.
 3. **Cross-edit and dual-document** when a session touches both (Lambda GPU
    runs, SDPA workarounds, image layout, shim install).
 4. **Lambda runbook:** `examples/smolvm/lambda-instructions.md` and
-   `/Users/nicky/Documents/smolvm-notes/lambda-instructions.md` — keep in sync.
+   `/Users/nicky/Documents/smolvm-notes/runbooks/lambda-instructions.md` — keep in sync.
 5. Drop workarounds in `portal.cuda` only after the matching smolvm issue is
    fixed and re-validated on Lambda.
 
@@ -50,7 +50,7 @@ three, and put each kind of content in the right one.
 |--------|--------------|-------------|
 | PorTAL train/extract/convert/eval/port | smol-portal | smolvm only if a runtime bug is found |
 | Math SDPA / device_map workarounds | smol-portal `portal.cuda` | comment on smolvm #597 until fixed |
-| Worker Dockerfile / Smolfile / Lambda steps | smol-portal `examples/smolvm/` | `smolvm-notes/lambda-instructions.md` |
+| Worker Dockerfile / Smolfile / Lambda steps | smol-portal `examples/smolvm/` | `smolvm-notes/runbooks/lambda-instructions.md` |
 | Shim / launch / staging / release tarball | smolvm | re-test recipe in smol-portal examples + memory |
 
 ## Agents: edit across roots
