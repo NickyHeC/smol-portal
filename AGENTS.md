@@ -51,8 +51,8 @@ alone. If they want the full port, use the e2e path below.
    works with no manual shim step. ≥1.5.2 also works but stock tarballs **through
    1.6.3** omit shims — build+copy from the matching tag. On Ubuntu 22.04, skip
    stock **1.6.0 / 1.6.1** (GLIBC_2.39). *(Stock ≥1.6.4 bundles shims; last
-   GPU-validated **v1.6.8** A10 2026-07-17 — CUDA gate + warm fork PASS. Prefer
-   latest ≥1.6.4; tip as of 2026-07-19 is **v1.6.13** — re-validate on next box.)*
+   GPU-validated **v1.6.13** A10 2026-07-20 — CUDA gate + warm fork PASS.
+   Prefer latest ≥1.6.4.)*
 2. **Worker image** `portal-cuda.tar` — a pre-baked pip-torch image so smolvm's
    CUDA staging can interpose at pull time. Build:
    `docker build -f examples/smolvm/Dockerfile.portal-cuda -t portal-cuda . && docker save portal-cuda -o portal-cuda.tar`

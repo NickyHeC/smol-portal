@@ -8,14 +8,14 @@ paths at your own key.
 nothing persists (`portal-cuda.tar`, clones, rustup, shims). Run the full bootstrap
 below on each new instance.
 
-**Last validated:** 2026-07-17 — stock **smolvm v1.6.8** on A10: CUDA gate
+**Last validated:** 2026-07-20 — stock **smolvm v1.6.13** on A10: CUDA gate
 `cuda: True` with **no manual shim copy**; warm `--cuda --forkable` machine
-fork + clone matmul PASS (~1 s). Prior (2026-07-16): portallib connector DoD
-on A10 (1.7B) + H100 (8B); 8B A/B/C matrix PASS with one flaky hang (filed
-upstream as smolvm [#667](https://github.com/smol-machines/smolvm/issues/667)).
-**smolvm ≥ v1.6.4 ships CUDA shims out of the box** (#601 / #596). Prefer latest
-stable (tip **v1.6.13** as of 2026-07-19 — not yet GPU re-validated after
-post-1.6.8 fork/CUDA churn); skip the manual shim-copy block on **v1.6.4+**;
+fork + clone matmul PASS (~0.3 s). Prior (2026-07-17): v1.6.8 gate+fork;
+(2026-07-16): portallib connector DoD on A10 (1.7B) + H100 (8B); 8B A/B/C
+matrix PASS with one flaky hang (filed upstream as smolvm
+[#667](https://github.com/smol-machines/smolvm/issues/667)).
+**smolvm ≥ v1.6.4 ships CUDA shims out of the box** (#601 / #596). Prefer
+**v1.6.13**; skip the manual shim-copy block on **v1.6.4+**;
 keep it only for stock ≤1.6.3.
 
 **GPU sizing (pick the box for the job):**
@@ -32,10 +32,10 @@ dataset). Pin dataset revision `ffc3c0e44f529bf64a5ae62ed5db090952db97ea` with
 0.1.1+.
 
 **Bootstrap version:** set `VER=1.6.13` (or any ≥1.6.4) on Ubuntu 22.04 — shims
-are bundled, so **skip the manual shim-copy block**. Last GPU-validated pin was
-`1.6.8`; prefer tip and re-check the CUDA gate on a new box. Historical §1–§5 /
-§9 blocks may still say older tags. **Avoid stock 1.6.0 / 1.6.1** on 22.04
-unless you apply §9e. Only stock **≤1.6.3** still needs the shim-copy block.
+are bundled, so **skip the manual shim-copy block**. Last GPU-validated pin is
+**1.6.13** (A10, 2026-07-20). Historical §1–§5 / §9 blocks may still say older
+tags. **Avoid stock 1.6.0 / 1.6.1** on 22.04 unless you apply §9e. Only stock
+**≤1.6.3** still needs the shim-copy block.
 
 | Resource | Path |
 |----------|------|

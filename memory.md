@@ -7,12 +7,39 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ## Next session
 
-1. **Next GPU box:** stock **smolvm v1.6.13** CUDA gate + warm fork (post-1.6.8
-   fork/CUDA churn: #672/#676/#677/#680/#681/#683). Optional cold 8B with
-   `SMOLVM_CUDA_SHIM_TRACE=1` for [#667](https://github.com/smol-machines/smolvm/issues/667).
-2. Watch portallib **0.2.0** PyPI → bump `Dockerfile.portallib-cuda` + re-validate
-   CLI. Also watch their [#16](https://github.com/ramp-public/portallib/pull/16)/[#17](https://github.com/ramp-public/portallib/issues/17)
-   (disk-offload injector — low impact on our `device_map=cuda` recipe).
+1. Filed [smolvm #698](https://github.com/smol-machines/smolvm/issues/698) for the
+   **120s persistent-start timeout** on large local image tars (`portal-cuda.tar`
+   flatten → EAGAIN). Follow up: offer the small PR (reuse 600s pull budget /
+   scale with archive size), or pack a smaller worker.
+2. Deferred: #667 cold 8B + `SHIM_TRACE` on H100.
+3. Watch portallib **0.2.0** PyPI → bump `Dockerfile.portallib-cuda` + CLI re-validate.
+   Also [#16](https://github.com/ramp-public/portallib/pull/16)/[#17](https://github.com/ramp-public/portallib/issues/17).
+
+## 2026-07-20 (A10) — stock smolvm v1.6.13: CUDA gate + warm fork PASS
+
+- **Box:** Lambda A10. Bootstrap stock **v1.6.13** only (no shim copy).
+  proto-hash `abbbacbad8f2aa32`.
+- **CUDA gate:** `machine run --net --cuda` + `portal-cuda.tar` → **`cuda: True`**,
+  NVIDIA A10, tiny matmul OK.
+- **Warm CUDA fork:** PASS — fork wall **~0.3 s**; clone `cuda: True` + matmul OK.
+- **Ops:** persistent `machine start` with the 2.9 GiB `portal-cuda.tar` hits the
+  hard-coded 120s detached-run timeout while flattening (reports as EAGAIN) —
+  filed [smolvm #698](https://github.com/smol-machines/smolvm/issues/698).
+  Ephemeral `run` fine; fork smoke used slim image + in-guest torch + cudart
+  bind-mount. Prefer `VER=1.6.13`; SPEC floor still ≥1.6.4.
+- Private: `smolvm-notes/plans/testing-2026-07-20.md`,
+  `watches/smolvm-version-watch.md`.
+
+## 2026-07-20 — daily startup: FF smolvm +10; no new tag; testing still box-gated
+
+- **smolvm:** FF'd local `main` to upstream tip `8d4a3a15` (was 10 behind). No new
+  release (still **v1.6.13**). CUDA-relevant landings: #690 (fork-clone serving /
+  sm90) + #692 (ring transport + CUDA-graph capture). Strengthens next-box warm
+  fork revalidation. #667 still open (0 comments). Our #600/#602/#638 unchanged.
+- **portallib:** tip unchanged (`2ee19a8`); PyPI still **0.1.2**. #16 draft / #17
+  unchanged — watch only.
+- **Today's testing:** blocked on a GPU box. Queue = stock 1.6.13 CUDA gate + warm
+  fork (P0), optional #667 cold-trace (P1). No connector code changes today.
 
 ## 2026-07-19 — daily startup: smolvm → v1.6.13; portallib disk-offload issue; notes reorg
 
