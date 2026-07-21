@@ -7,13 +7,36 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 
 ## Next session
 
-1. Filed [smolvm #698](https://github.com/smol-machines/smolvm/issues/698) for the
-   **120s persistent-start timeout** on large local image tars (`portal-cuda.tar`
-   flatten → EAGAIN). Follow up: offer the small PR (reuse 600s pull budget /
-   scale with archive size), or pack a smaller worker.
-2. Deferred: #667 cold 8B + `SHIM_TRACE` on H100.
+1. [smolvm #698](https://github.com/smol-machines/smolvm/issues/698) /
+   [PR #699](https://github.com/smol-machines/smolvm/pull/699) — 120s
+   persistent-start timeout. GPU-validated on A10 (stock FAIL 131s / PR PASS
+   173s). CI green; awaiting Bin review.
+2. [#667](https://github.com/smol-machines/smolvm/issues/667) — next permanent
+   wedge with fork `nickyhec/cuda-667-stall-diag` (expect watchdog `op=0xb3`);
+   then consider upstream diagnostics PR. No fix PR yet.
 3. Watch portallib **0.2.0** PyPI → bump `Dockerfile.portallib-cuda` + CLI re-validate.
    Also [#16](https://github.com/ramp-public/portallib/pull/16)/[#17](https://github.com/ramp-public/portallib/issues/17).
+
+## 2026-07-21 (H100) — #667 diag validated: stall localized to MemcpyGpaDtoH (0xB3)
+
+- Built diag branch from source on H100 (cherry-picked onto v1.6.13; host hooks need
+  full `smolvm` binary rebuild since `serve()` runs in `_cuda-daemon`; libkrun dlopen'd
+  so no submodule build). proto-hash `abbbacbad8f2aa32`. CUDA gate PASS.
+- **Cold 8B PASS but caught a transient ~10s host-dispatch stall on op 0xB3 =
+  `MemcpyGpaDtoH`** (device→host readback); guest-stall empty ⇒ guest blocked awaiting
+  host, stall is host-side inside the forwarded call (not a ring livelock). Recovered → DONE.
+  Warm retry clean. No permanent wedge (flaky).
+- Diagnostics proven to survive + localize. Commented on
+  [#667](https://github.com/smol-machines/smolvm/issues/667#issuecomment-5029666358).
+  Fork branch: `NickyHeC/smolvm` `nickyhec/cuda-667-stall-diag` (v1.6.13 + patch; no
+  upstream PR yet). Private:
+  `smolvm-notes/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-21-diag/`.
+
+## 2026-07-20 (H100) — #667 TRACE: cold PASS, warm hang (stock v1.6.13)
+
+- Stock **v1.6.13** CUDA gate PASS (`True` / portallib 0.1.2); proto-hash `abbbacbad8f2aa32`.
+- Cold Qwen3-8B fp32 + `SMOLVM_CUDA_SHIM_TRACE=1`: **PASS**. Immediate retry: **HUNG** ~20 min at 32433 MiB / util 0% / qcow frozen — commented on [#667](https://github.com/smol-machines/smolvm/issues/667#issuecomment-5026730421). Guest TRACE not drained while wedged.
+- Private: `smolvm-notes/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-20/`.
 
 ## 2026-07-20 (A10) — stock smolvm v1.6.13: CUDA gate + warm fork PASS
 
