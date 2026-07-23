@@ -4,11 +4,10 @@ Development log and runbook for GPU training through smolvm's CUDA remoting stac
 **Validated end-to-end on a cloud A10 (2026-07-13), including real-model
 Qwen3-0.6B → TinyLlama `portal port`.** See also `memory.md` (repo root).
 
-**Direction (2026-07-14):** smol-portal is the **secure-VM connector** for Ramp's
-[`portallib`](https://github.com/ramp-public/portallib). Prefer the **portallib
-worker image** below once that package is installable. The legacy `portal-cuda`
-image + `pipeline/portal` ML remain the fallback until portallib is confirmed
-under smolvm CUDA (see [ROADMAP.md](../../ROADMAP.md) Phase A3).
+smol-portal is the **secure-VM connector** for Ramp's
+[`portallib`](https://github.com/ramp-public/portallib). The `portallib-cuda`
+worker image below runs the public training, refitting, and evaluation APIs under
+smolvm. The separate `portal-cuda` image contains the legacy pipeline.
 
 **Cloud GPU quick start:** [`lambda-instructions.md`](./lambda-instructions.md) — bootstrap,
 CUDA verify, `portal train` / fused SDPA / `portal port` e2e copy-paste blocks. Replace
@@ -37,11 +36,11 @@ staging paths.
 **Build on a machine with Docker:**
 
 ```bash
-# Connector path (portallib engine) — full image once ramp-public/portallib#1 merges:
+# Connector path (portallib 0.2 engine):
 docker build -f examples/smolvm/Dockerfile.portallib-cuda -t portallib-cuda .
 docker save portallib-cuda -o portallib-cuda.tar
 
-# Deps-only (works today while portallib is still README-only):
+# Optional dependencies-only image:
 docker build -f examples/smolvm/Dockerfile.portallib-cuda \
   --build-arg INSTALL_PORTALLIB=0 -t portallib-cuda .
 docker save portallib-cuda -o portallib-cuda.tar
@@ -55,11 +54,11 @@ docker save portal-cuda -o portal-cuda.tar
 
 [`smoke_portallib.py`](./smoke_portallib.py) loads one task from
 `RampPublic/portallib-tasks` and probes the installed `portallib` entry points.
-Use `--dry-run` before the alpha merges (dataset + discovery only):
+Use `--dry-run` to check imports and dataset access without loading a base model:
 
 ```bash
 # Inside the VM (image must have datasets; net=true for HF):
-python3 examples/smolvm/smoke_portallib.py --task boolq --max-samples 8 --dry-run
+python3 examples/smolvm/smoke_portallib.py --task boolq --max-examples 8 --dry-run
 ```
 
 Smolfile: [`portallib.smolfile`](./portallib.smolfile).
