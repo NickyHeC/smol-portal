@@ -27,9 +27,8 @@ keep it only for stock ≤1.6.3.
 | **8B bf16** refit / dual-source short train | ~80GB | `--mem 65536` |
 | 8B under remoting | math or fused | 8B A/B/C matrix all PASS; hangs seen are flaky, kill at 0%-util/VRAM-held >20 min |
 
-Bake `portallib[training]==0.1.2` into `portallib-cuda` (subset eval + normalized
-dataset). Pin dataset revision `ffc3c0e44f529bf64a5ae62ed5db090952db97ea` with
-0.1.1+.
+Bake `portallib[training]==0.2.0` into `portallib-cuda`. Pin dataset revision
+`ffc3c0e44f529bf64a5ae62ed5db090952db97ea` and use `v0.2.0` model artifacts.
 
 **Bootstrap version:** set `VER=1.6.13` (or any ≥1.6.4) on Ubuntu 22.04 — shims
 are bundled, so **skip the manual shim-copy block**. Last GPU-validated pin is

@@ -13,30 +13,26 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 
 DEFAULT_DATASET = "RampPublic/portallib-tasks"
-DEFAULT_DATASET_REVISION = "d35f1e8a813cfae662166164fc25965a31b01ae0"
+DEFAULT_DATASET_REVISION = "ffc3c0e44f529bf64a5ae62ed5db090952db97ea"
 DEFAULT_SOURCE = "RampPublic/portal-qwen3-1.7b"
-DEFAULT_SOURCE_REVISION = "v0.1.0"
+DEFAULT_SOURCE_REVISION = "v0.2.0"
 # Small Qwen3 target so A10 can refit without H200-class VRAM.
 DEFAULT_TARGET_ID = "Qwen/Qwen3-0.6B"
 DEFAULT_TARGET_REVISION = "c1899de289a04d12100db370d81485cdf75e47ca"
 
 
-@dataclass(frozen=True)
-class BaseRecipe:
-    model_id: str
-    revision: str
-    layer_path: str = "model.layers"
-
-
 def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
     import torch
 
-    if math_sdpa and hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "enable_flash_sdp"):
+    if (
+        math_sdpa
+        and hasattr(torch.backends, "cuda")
+        and hasattr(torch.backends.cuda, "enable_flash_sdp")
+    ):
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
@@ -44,28 +40,6 @@ def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
     os.environ.setdefault("TORCH_COMPILE_DISABLE", "1")
     if force_fp32:
         print("dtype: fp32 (hosting-safe)", flush=True)
-
-
-def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool):
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from portallib import PortalBase
-
-    tokenizer = AutoTokenizer.from_pretrained(recipe.model_id, revision=recipe.revision)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    kwargs: dict = {"revision": recipe.revision, "torch_dtype": dtype}
-    if hosting_safe and device.type == "cuda":
-        kwargs["device_map"] = "cuda"
-        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs).to(device)
-    return PortalBase(
-        model_id=recipe.model_id,
-        model=model,
-        tokenizer=tokenizer,
-        revision=recipe.revision,
-        layer_path=recipe.layer_path,
-    )
 
 
 def main() -> None:
@@ -80,7 +54,9 @@ def main() -> None:
     parser.add_argument("--eval-max-examples", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--output-dir", type=Path, default=Path("/tmp/portallib-refit-smoke"))
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("/tmp/portallib-refit-smoke")
+    )
     parser.add_argument(
         "--hosting-safe",
         action=argparse.BooleanOptionalAction,
@@ -92,10 +68,13 @@ def main() -> None:
     try:
         import portallib
         from portallib import (
-            ChoiceDataset,
+            BaseModelSpec,
             PortalAdapterRefitter,
             PortalModel,
             PortalTrainingConfig,
+            load_base,
+            load_dataset,
+            runtime_device,
         )
     except ImportError as exc:
         raise SystemExit("portallib not importable") from exc
@@ -115,27 +94,28 @@ def main() -> None:
         flush=True,
     )
 
-    dataset = ChoiceDataset.from_hub(args.dataset, revision=args.dataset_revision)
+    dataset = load_dataset(args.dataset, revision=args.dataset_revision)
     if args.dry_run:
         print("dry-run ok", flush=True)
         sys.exit(0)
 
     import torch
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device, dtype = runtime_device("auto", "float32" if args.hosting_safe else "auto")
     print(f"cuda_available={torch.cuda.is_available()} device={device}", flush=True)
     if args.hosting_safe:
         _apply_hosting_knobs(force_fp32=True, math_sdpa=device.type == "cuda")
-        dtype = torch.float32
-    else:
-        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
 
     source = PortalModel.from_pretrained(args.source, revision=args.source_revision)
-    target = _load_base(
-        BaseRecipe(args.target_id, args.target_revision),
+    target = load_base(
+        BaseModelSpec(
+            args.target_id,
+            args.target_revision,
+            dtype=dtype,
+            device_map="cuda" if args.hosting_safe and device.type == "cuda" else None,
+        ),
         device=device,
         dtype=dtype,
-        hosting_safe=args.hosting_safe,
     )
 
     config = PortalTrainingConfig.from_portal_config(
@@ -165,7 +145,9 @@ def main() -> None:
         )
 
     print("refitting …", flush=True)
-    result = PortalAdapterRefitter(source, target, dataset, config=config).refit(on_epoch=on_epoch)
+    result = PortalAdapterRefitter(source, target, dataset, config=config).refit(
+        on_epoch=on_epoch
+    )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     out_artifact = args.output_dir / "refit-artifact"

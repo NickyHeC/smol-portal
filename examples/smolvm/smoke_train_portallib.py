@@ -16,29 +16,25 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 
 DEFAULT_DATASET = "RampPublic/portallib-tasks"
-DEFAULT_DATASET_REVISION = "d35f1e8a813cfae662166164fc25965a31b01ae0"
+DEFAULT_DATASET_REVISION = "ffc3c0e44f529bf64a5ae62ed5db090952db97ea"
 DEFAULT_BASES = (
     ("Qwen/Qwen3-1.7B", "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"),
     ("Qwen/Qwen3-4B", "1cfa9a7208912126459214e8b04321603b3df60c"),
 )
 
 
-@dataclass(frozen=True)
-class BaseRecipe:
-    model_id: str
-    revision: str
-    layer_path: str = "model.layers"
-
-
 def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
     import torch
 
-    if math_sdpa and hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "enable_flash_sdp"):
+    if (
+        math_sdpa
+        and hasattr(torch.backends, "cuda")
+        and hasattr(torch.backends.cuda, "enable_flash_sdp")
+    ):
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
@@ -50,28 +46,6 @@ def _apply_hosting_knobs(*, force_fp32: bool, math_sdpa: bool) -> None:
 def _always_safe_env() -> None:
     # HF+compile is unsupported through remoting; set even for bf16 recipes.
     os.environ.setdefault("TORCH_COMPILE_DISABLE", "1")
-
-
-def _load_base(recipe: BaseRecipe, *, device, dtype, hosting_safe: bool):
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from portallib import PortalBase
-
-    tokenizer = AutoTokenizer.from_pretrained(recipe.model_id, revision=recipe.revision)
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    kwargs: dict = {"revision": recipe.revision, "torch_dtype": dtype}
-    if hosting_safe and device.type == "cuda":
-        kwargs["device_map"] = "cuda"
-        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(recipe.model_id, **kwargs).to(device)
-    return PortalBase(
-        model_id=recipe.model_id,
-        model=model,
-        tokenizer=tokenizer,
-        revision=recipe.revision,
-        layer_path=recipe.layer_path,
-    )
 
 
 def _model_slug(model_id: str) -> str:
@@ -104,17 +78,24 @@ def main() -> None:
 
     try:
         import portallib
-        from portallib import ChoiceDataset, PortalCoreTrainer, PortalTrainingConfig
+        from portallib import (
+            BaseModelSpec,
+            PortalCoreTrainer,
+            PortalTrainingConfig,
+            load_base,
+            load_dataset,
+            runtime_device,
+        )
     except ImportError as exc:
         raise SystemExit("portallib not importable") from exc
 
     base_specs = args.base or [f"{mid}@{rev}" for mid, rev in DEFAULT_BASES]
-    recipes: list[BaseRecipe] = []
+    recipes: list[BaseModelSpec] = []
     for spec in base_specs:
         if "@" not in spec:
             raise SystemExit(f"base must be model_id@revision, got {spec!r}")
         model_id, revision = spec.rsplit("@", 1)
-        recipes.append(BaseRecipe(model_id, revision))
+        recipes.append(BaseModelSpec(model_id, revision))
 
     banner = {
         "portallib": getattr(portallib, "__version__", None),
@@ -129,7 +110,7 @@ def main() -> None:
     }
     print(json.dumps(banner), flush=True)
 
-    dataset = ChoiceDataset.from_hub(args.dataset, revision=args.dataset_revision)
+    dataset = load_dataset(args.dataset, revision=args.dataset_revision)
     if args.dry_run:
         print("dry-run ok", flush=True)
         sys.exit(0)
@@ -137,21 +118,36 @@ def main() -> None:
     import torch
 
     _always_safe_env()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device, dtype = runtime_device("auto", "float32" if args.hosting_safe else "auto")
     print(f"cuda_available={torch.cuda.is_available()} device={device}", flush=True)
     if args.hosting_safe:
         _apply_hosting_knobs(force_fp32=True, math_sdpa=device.type == "cuda")
-        dtype = torch.float32
-    else:
-        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
 
     bases = [
-        _load_base(recipe, device=device, dtype=dtype, hosting_safe=args.hosting_safe) for recipe in recipes
+        load_base(
+            BaseModelSpec(
+                recipe.model_id,
+                recipe.revision,
+                layer_path=recipe.layer_path,
+                dtype=dtype,
+                device_map="cuda"
+                if args.hosting_safe and device.type == "cuda"
+                else None,
+            ),
+            device=device,
+            dtype=dtype,
+        )
+        for recipe in recipes
     ]
     if device.type == "cuda":
         alloc = torch.cuda.memory_allocated() / (1024**3)
         reserved = torch.cuda.memory_reserved() / (1024**3)
-        print(json.dumps({"phase": "loaded", "alloc_gib": alloc, "reserved_gib": reserved}), flush=True)
+        print(
+            json.dumps(
+                {"phase": "loaded", "alloc_gib": alloc, "reserved_gib": reserved}
+            ),
+            flush=True,
+        )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     live_path = args.output_dir / "train_live.jsonl"
@@ -186,7 +182,10 @@ def main() -> None:
             "acc_norm": epoch.macro_accuracy,
             "gold_nll": epoch.macro_gold_nll,
             "bases": {
-                name: {"acc_norm": result.macro_accuracy, "gold_nll": result.macro_gold_nll}
+                name: {
+                    "acc_norm": result.macro_accuracy,
+                    "gold_nll": result.macro_gold_nll,
+                }
                 for name, result in epoch.evaluations.items()
             },
         }
