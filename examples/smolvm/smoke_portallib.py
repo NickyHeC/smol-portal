@@ -158,11 +158,7 @@ def main() -> None:
         print("sdpa: fused/sdpa allowed (no math-only force)", flush=True)
 
     portal = PortalModel.from_pretrained(args.artifact, revision=args.artifact_revision)
-    if portal.config.base_model_name_or_path != args.base_id:
-        raise SystemExit(
-            f"artifact expects base {portal.config.base_model_name_or_path!r}, "
-            f"got --base-id {args.base_id!r}"
-        )
+    portal.validate_base_model(args.base_id, args.base_revision)
     if args.task not in portal.config.tasks:
         raise SystemExit(
             f"task={args.task!r} not in artifact tasks={list(portal.config.tasks)}"
