@@ -63,6 +63,43 @@ python3 examples/smolvm/smoke_portallib.py --task boolq --max-examples 8 --dry-r
 
 Smolfile: [`portallib.smolfile`](./portallib.smolfile).
 
+### Isolated-GPU microVM example
+
+The smallest end-to-end "run portallib on an isolated GPU" example is the smoke
+eval driven through the Smolfile — a published artifact is evaluated inside a
+smolvm CUDA microVM with no host Python environment beyond the worker image:
+
+```bash
+# 1. Build + save the worker image (portallib 0.2 baked in):
+docker build -f examples/smolvm/Dockerfile.portallib-cuda \
+  --build-arg PORTALLIB_SPEC='portallib[training]==0.2.0' -t portallib-cuda .
+docker save portallib-cuda -o portallib-cuda.tar
+
+# 2. Evaluate Qwen3-1.7B + its published portal artifact inside the microVM:
+smolvm machine run --net --cuda --mem 16384 -s examples/smolvm/portallib.smolfile -- \
+  python3 /workspace/smol-portal/examples/smolvm/smoke_portallib.py \
+    --task rte --max-examples 8 --hosting-safe
+```
+
+Expect `portallib smoke ok` with a finite macro `acc_norm` and gold NLL. This is
+the candidate we distill upstream (portallib `examples/` / `COMPUTE.md`) once the
+0.2 connector is GPU-validated.
+
+### Host-vs-bare fidelity
+
+[`fidelity_check.sh`](./fidelity_check.sh) runs the **same** evaluation recipe in
+a smolvm microVM and bare on the host (`docker --gpus all`), then asserts the
+macro `acc_norm` matches within a tolerance — the hosting-fidelity gate that
+remoting must not change the numbers (our T3 "Δacc = 0"):
+
+```bash
+examples/smolvm/fidelity_check.sh \
+  --tasks rte,boolq,winogrande --max-examples 8 --tol 0.02
+```
+
+Both runs print their report JSON after a sentinel line, so the comparison reads
+stdout directly and does not depend on virtiofs persisting the guest output file.
+
 ### Capability probe (Lambda afternoon)
 
 [`capability_probe.py`](./capability_probe.py) records pass/fail for fp32, bf16,
@@ -168,7 +205,8 @@ substrate** ahead of the portallib drop (detail in private notes):
 3. Capability probe matrix through remoted CUDA: bf16, fused SDPA, `torch.compile`,
    multi-GPU — results feed portallib force-offs + Ben feedback Tier 2.
 4. When portallib is installable: build full `portallib-cuda.tar`, run
-   `smoke_portallib.py` on one `portallib-tasks` task, compare in-VM vs bare-metal
+   `smoke_portallib.py` on one `portallib-tasks` task, then
+   [`fidelity_check.sh`](./fidelity_check.sh) to compare in-VM vs bare-metal
    `acc_norm` (hosting fidelity).
 
 ## SDPA / #597 history
