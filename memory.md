@@ -17,6 +17,18 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 3. Watch portallib **0.2.0** PyPI → bump `Dockerfile.portallib-cuda` + CLI re-validate.
    Also [#16](https://github.com/ramp-public/portallib/pull/16)/[#17](https://github.com/ramp-public/portallib/issues/17).
 
+## 2026-07-24 — renamed private notes → `smol-notes` (project layout)
+
+- **`~/Documents/smolvm-notes` → `~/Documents/smol-notes`.** Still local-only /
+  not a git repo. Now the private scratchpad for **all** Smol Machines work
+  (smolvm, smol-portal, portallib, smol, smolmachines), plus `agent-guidelines/`
+  and cross-project `TODO.md` (was `watches/github-action-items.md`).
+- Layout is by project: `smol-notes/{smolvm,smol-portal,portallib,smol,smolmachines}/`.
+  Canonical Lambda runbook:
+  `smol-notes/smol-portal/runbooks/lambda-instructions.md`.
+- Public path refs updated in `.cursor/rules/{smolvm-interop,daily-startup}.mdc`,
+  `AGENTS.md`, `ROADMAP.md`, and the sanitized example runbook.
+
 ## 2026-07-21 (H100) — #667 diag validated: stall localized to MemcpyGpaDtoH (0xB3)
 
 - Built diag branch from source on H100 (cherry-picked onto v1.6.13; host hooks need
@@ -30,13 +42,13 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   [#667](https://github.com/smol-machines/smolvm/issues/667#issuecomment-5029666358).
   Fork branch: `NickyHeC/smolvm` `nickyhec/cuda-667-stall-diag` (v1.6.13 + patch; no
   upstream PR yet). Private:
-  `smolvm-notes/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-21-diag/`.
+  `smol-notes/portallib/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-21-diag/`.
 
 ## 2026-07-20 (H100) — #667 TRACE: cold PASS, warm hang (stock v1.6.13)
 
 - Stock **v1.6.13** CUDA gate PASS (`True` / portallib 0.1.2); proto-hash `abbbacbad8f2aa32`.
 - Cold Qwen3-8B fp32 + `SMOLVM_CUDA_SHIM_TRACE=1`: **PASS**. Immediate retry: **HUNG** ~20 min at 32433 MiB / util 0% / qcow frozen — commented on [#667](https://github.com/smol-machines/smolvm/issues/667#issuecomment-5026730421). Guest TRACE not drained while wedged.
-- Private: `smolvm-notes/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-20/`.
+- Private: `smol-notes/portallib/workspaces/portallib-t0t1/lambda-logs/cold8b-TRACE-2026-07-20/`.
 
 ## 2026-07-20 (A10) — stock smolvm v1.6.13: CUDA gate + warm fork PASS
 
@@ -50,7 +62,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   filed [smolvm #698](https://github.com/smol-machines/smolvm/issues/698).
   Ephemeral `run` fine; fork smoke used slim image + in-guest torch + cudart
   bind-mount. Prefer `VER=1.6.13`; SPEC floor still ≥1.6.4.
-- Private: `smolvm-notes/plans/testing-2026-07-20.md`,
+- Private: `smol-notes/smol-portal/plans/testing-2026-07-20.md`,
   `watches/smolvm-version-watch.md`.
 
 ## 2026-07-20 — daily startup: FF smolvm +10; no new tag; testing still box-gated
@@ -74,7 +86,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   [#17](https://github.com/ramp-public/portallib/issues/17) + draft PR
   [#16](https://github.com/ramp-public/portallib/pull/16) (Accelerate disk-offload
   drops LoRA deltas) — watch only for our connector.
-- **smolvm-notes:** reorganized into `watches/` `runbooks/` `plans/`
+- **smol-notes:** (later renamed from smolvm-notes) reorganized into `watches/` `runbooks/` `plans/`
   `sessions/` `artifacts/` `workspaces/` (private README updated). Public path
   refs in interop/daily-startup rules + ROADMAP adjusted. No raw session dumps
   promoted — already covered in prior `memory.md` entries.
@@ -122,7 +134,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   matmul OK. Tip-of-main (+2 fork commits) not needed.
 - Benign cuBLAS context warn still on first matmul (warmup not on PyPI yet).
 - **Next:** 8B hang follow-up (user). Private detail:
-  `smolvm-notes/smolvm-version-watch.md`, `github-action-items.md`.
+  `smol-notes/smolvm/watches/smolvm-version-watch.md`, `github-action-items.md`.
 
 ## 2026-07-16 (afternoon) — portallib 0.1.2/0.2.0: issues resolved upstream, CLI reviewed
 
@@ -158,7 +170,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   provider-neutral `--config -` (stdin) + headless path-resolution mode.
 - **Connector:** `examples/smolvm/Dockerfile.portallib-cuda` → `0.1.2`;
   `smoke_portallib.py` gained `--tasks` subset + `--recipe-knobs` + normalized
-  dataset pin. Private detail: `smolvm-notes/portallib-{watch,feedback}.md`,
+  dataset pin. Private detail: `smol-notes/portallib/{watches/portallib-watch,plans/portallib-feedback}.md`,
   `portallib-t0t1/lambda-artifacts/{t012,cli}-2026-07-16/`.
 
 ## 2026-07-16 (eve) — smolvm v1.6.4 ships CUDA shims out of the box; portallib CLI+warmup merged
@@ -194,7 +206,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   ≥27 min (killed). Immediate A retry completed. Overnight fused hangs look
   similarly non-deterministic — **do not file** a fused-only or math-only issue
   until a hard cold-box repro.
-- Private: `smolvm-notes/portallib-t0t1/lambda-artifacts/fused8b-2026-07-16/`
+- Private: `smol-notes/portallib/workspaces/portallib-t0t1/lambda-artifacts/fused8b-2026-07-16/`
   (+ `DRAFT-smolvm-issue.md` marked HOLD).
 
 ## 2026-07-16 — H100 overnight close-out; 1000-ex math PASS; fused 8B abandoned
@@ -215,7 +227,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
   remoting jobs that sit at 0% util with VRAM held >15–20 min after load;
   virtiofs guest-root artifact writes can miss the host — recover JSON from
   stdout. Prefer `--mem 65536` + bf16 for 8B train/refit (fp32 8B refit hung).
-- Private detail: `smolvm-notes/portallib-t0t1/overnight-results.md`.
+- Private detail: `smol-notes/portallib/workspaces/portallib-t0t1/overnight-results.md`.
 
 ## 2026-07-15 (late) — smolvm #601 validated from main on A10; stock v1.6.3 still ships no CUDA shims
 
@@ -352,7 +364,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **smolvm bumped to v1.6.0** (from v1.5.2) via the new daily-startup routine —
   new `src/cuda_daemon.rs` + `cuda-fork-raw-handles` upstream; shims must be
   rebuilt for v1.6.0 before the next Lambda run. Logged in
-  `smolvm-notes/smolvm-version-watch.md`.
+  `smol-notes/smolvm/watches/smolvm-version-watch.md`.
 - **Committed + pushed** the prior Phase A2 + 3-folder-docs work (`bdef823`).
 - **Daily watches added:** `daily-startup.mdc` rule (sync smolvm + check portallib)
   + private `portallib-watch.md` / `smolvm-version-watch.md` logs.
@@ -402,7 +414,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **Metrics anomaly → root-caused:** fused eval `loss=0.0 ppl=1.0` / math `ppl=89385` traced to (1) converter never trained — predicted LoRA weights injected via `param.data.copy_(detach())` broke autograd (flat calib loss `12.3736`), and (2) eval scored pad tokens + toggled SDPA backend. Confirmed on Lambda: `converter.grad after injected-path backward: None`.
 - **Fix (branch `fix/converter-autograd-eval-metrics`, pushed):** converter uses `torch.func.functional_call` (grads reach the MLP); eval masks pads (`labels=-100`), pins math SDPA, weights loss by scored tokens; +2 regression tests; ruff/pytest green (11 pass).
 - **Fix validated on Lambda (v1.5.2, A10):** converter loss now **descends** `11.82→9.39→8.37→7.79`; eval **`ppl=4169`** (finite, sane). `port e2e ok (fixed)`.
-- **Docs added (same branch):** `SPEC.md`, `AGENTS.md`, de-anonymized `examples/smolvm/port_e2e.py` reference driver; personal Lambda copy in `smolvm-notes/port_e2e_lambda.py`.
+- **Docs added (same branch):** `SPEC.md`, `AGENTS.md`, de-anonymized `examples/smolvm/port_e2e.py` reference driver; personal Lambda copy in `smol-notes/smol-portal/runbooks/port_e2e_lambda.py`.
 - **Next:** open PR for the fix branch; de-anonymize existing `examples/smolvm/` personal refs; Gemma target with `HF_TOKEN`; scale samples/epochs for real accuracy; land smolvm PRs #600–#602.
 
 ## 2026-07-13 (evening) — Lambda session complete: full PorTAL e2e on smolvm v1.5.2
@@ -422,21 +434,21 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **#597 repro:** tiny Llama fused-SDPA `loss.backward()` **PASS** on smolvm **v1.5.2** + matching upstream shims (`backward ok`, with and without `SMOLVM_CUDA_RING=0`). Failed on v1.5.0 last session.
 - **False negatives today:** fork missing `v1.5.2` tag → accidental v1.5.1 shims until `git fetch smol-machines v1.5.2`.
 - **`portal train`:** not completed — `pip install portal` on host (Py3.10) fails; must install inside VM (`portal` needs Py3.11+).
-- **GitHub action items:** `~/Documents/smolvm-notes/github-action-items.md` (comment/close #597, PR #603 disposition, smol-portal math-SDPA workaround).
+- **GitHub action items:** `~/Documents/smol-notes/TODO.md` (comment/close #597, PR #603 disposition, smol-portal math-SDPA workaround).
 - **Still testing:** `portal train` without math SDPA on v1.5.2.
 
 ## 2026-07-12 (afternoon) — upstream v1.5.2; Lambda runbook + cross-repo agent rules
 
 - **Upstream** advanced to **v1.5.2** (`402f6c1a`): sparse storage-template copy, llama.cpp/CUDA 13, cuBLAS Level-1/2/3, graph coldstart + RTT modeling. **Does not fix #597** (fused SDPA backward) — launch-path overlap is memoization/graph only.
 - **No blockers** for today's Lambda plan: PR [#603](https://github.com/smol-machines/smolvm/pull/603) CI green + MERGEABLE; still need GPU trace.
-- **Added** `examples/smolvm/lambda-instructions.md` (+ canonical copy in `~/Documents/smolvm-notes/lambda-instructions.md`). PEM path: `~/Documents/PorTAL.pem`.
+- **Added** `examples/smolvm/lambda-instructions.md` (+ canonical copy in `~/Documents/smol-notes/smol-portal/runbooks/lambda-instructions.md`). PEM path: `~/Documents/PorTAL.pem`.
 - **Agent rules:** smolvm `.cursor/rules/smol-portal-interop.mdc` and smol-portal `.cursor/rules/smolvm-interop.mdc` — agents must cross-edit both local repos before pushing when the change spans runtime ↔ PorTAL.
 
 ## 2026-07-12 (evening) — smolvm upstream PRs filed; next Lambda = PR #597 trace
 
 - **Fork synced** to upstream v1.5.1; opened PRs [#600](https://github.com/smol-machines/smolvm/pull/600)–[#603](https://github.com/smol-machines/smolvm/pull/603) on `smol-machines/smolvm`.
 - **PR #597 fix is NOT done** — [#603](https://github.com/smol-machines/smolvm/pull/603) is diagnostics only (`SMOLVM_CUDA_SHIM_TRACE` on launch path). Real fix follows after a GPU trace run.
-- **Next Lambda session (first task):** build from `nickyhec/cuda-launch-diagnostics-597`, run fused-SDPA backward repro with `SMOLVM_CUDA_SHIM_TRACE=1` + `CUDA_LAUNCH_BLOCKING=1`, read which `[shim]` line fires. Full script in `~/Documents/smolvm-notes/cuda-build-plan.md` § "Next Lambda session" and `examples/smolvm/lambda-instructions.md` §5.
+- **Next Lambda session (first task):** build from `nickyhec/cuda-launch-diagnostics-597`, run fused-SDPA backward repro with `SMOLVM_CUDA_SHIM_TRACE=1` + `CUDA_LAUNCH_BLOCKING=1`, read which `[shim]` line fires. Full script in `~/Documents/smol-notes/smolvm/plans/cuda-build-plan.md` § "Next Lambda session" and `examples/smolvm/lambda-instructions.md` §5.
 - **Rust:** installed on Mac (can compile/test smolvm PRs locally). Lambda rustup — revisit next session.
 
 ## 2026-07-12 — smolvm CUDA validation complete (Lambda A10)
@@ -506,7 +518,7 @@ top. Each entry: date, summary, key outcomes, and decisions made.
 - **Target hardware:** NVIDIA GPUs, Linux x86_64, KVM.
 - **Tested on:** Lambda Cloud A10, driver 580.105.08, CUDA 13.0.
 - **DGX Spark:** available but user lacks sudo/docker group; use Lambda for now.
-- **Runbook:** `examples/smolvm/lambda-instructions.md` (synced from `~/Documents/smolvm-notes/`)
+- **Runbook:** `examples/smolvm/lambda-instructions.md` (synced from `~/Documents/smol-notes/`)
 - **gVisor install:** `runsc` at `/usr/local/bin/runsc`, runtime `runsc-gpu` with
   `--nvproxy=true --nvproxy-docker=true --platform=systrap --nvproxy-allowed-driver-capabilities=compute,utility,video`.
 - **Primary references:** gVisor `pkg/sentry/devices/nvproxy` (Go handlers),

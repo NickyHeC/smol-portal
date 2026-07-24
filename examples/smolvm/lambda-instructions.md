@@ -685,7 +685,7 @@ No host mount? `curl -fsSL` the raw `capability_probe.py` from your fork into `/
 | `torch_compile` | If FAIL → force-disable compile in worker / upstream knob |
 | `multi_gpu` | `device_count` + NCCL note; `gpu_1x_a10` → expect skip |
 
-Paste the JSON into the private session card (`smolvm-notes/`).
+Paste the JSON into the private session card (`smol-notes/smol-portal/`).
 
 ### 9d — After the box (same day)
 

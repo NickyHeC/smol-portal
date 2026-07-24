@@ -9,14 +9,14 @@ microVM** on a local NVIDIA GPU.
 Read [`SPEC.md`](SPEC.md) for the full contract (CLI, config schema, artifacts,
 smolvm integration). This guide is the operational playbook.
 
-> **Three-folder product.** This work spans three local folders and agents must
-> maintain all three: **smolvm** (`/Users/nicky/Documents/smolvm`, public runtime
-> — catch bugs, submit upstream), **smolvm-notes**
-> (`/Users/nicky/Documents/smolvm-notes`, private local-only scratchpad — raw
-> logs, canonical runbook, unpublished plans), and **smol-portal** (this repo,
-> public product). Flow: _private notes → distill → public smol-portal; runtime
-> bugs → smolvm → upstream._ Never commit secrets/box IPs to public repos; keep
-> them in notes and sanitize outward. Canonical allocation table:
+> **Repos + private notes.** PorTAL spans **smolvm**
+> (`/Users/nicky/Documents/smolvm`, public runtime — catch bugs, submit upstream),
+> **smol-portal** (this repo, public product), and **smol-notes**
+> (`/Users/nicky/Documents/smol-notes`, private local-only scratchpad organized by
+> project — raw logs, canonical runbook, unpublished plans, agent guidelines,
+> coding TODO). Flow: _private notes → distill → public smol-portal; runtime bugs
+> → smolvm → upstream._ Never commit secrets/box IPs to public repos; keep them
+> in notes and sanitize outward. Canonical allocation table:
 > [`.cursor/rules/smolvm-interop.mdc`](.cursor/rules/smolvm-interop.mdc).
 
 ## What PorTAL does

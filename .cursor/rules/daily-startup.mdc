@@ -8,7 +8,7 @@ alwaysApply: true
 Run once at the start of each working day, before touching PorTAL code. Two quick
 checks keep us aligned with the foundation (**smolvm**) and the reference (Ramp's
 **portallib**). Log observations in the private watch-logs under
-`/Users/nicky/Documents/smolvm-notes/`, not in public docs.
+`/Users/nicky/Documents/smol-notes/`, not in public docs.
 
 ## 1. Pull latest smolvm (the foundation)
 
@@ -35,7 +35,7 @@ git merge --ff-only upstream/main                         # only if 0 ahead
   update `smol-portal/SPEC.md` ("smolvm ≥ x"), `examples/smolvm/`, and the runbook.
 - Note CUDA-relevant upstream changes (new files/branches under `src/` or
   `crates/smolvm-cuda*`, e.g. `cuda_daemon.rs`, `cuda-fork-*`).
-- Log the version delta + actions in `smolvm-notes/watches/smolvm-version-watch.md`.
+- Log the version delta + actions in `smol-notes/smolvm/watches/smolvm-version-watch.md`.
 
 ## 2. Check `ramp-public/portallib` (the reference)
 
@@ -50,7 +50,7 @@ gh api repos/ramp-public/portallib/tags --jq '.[].name'
 gh api "repos/ramp-public/portallib/issues?state=all" --jq '.[] | "#\(.number) \(.state) \(.title)"'
 ```
 
-- Diff against the newest entry in `smolvm-notes/watches/portallib-watch.md`; if nothing
+- Diff against the newest entry in `smol-notes/portallib/watches/portallib-watch.md`; if nothing
   changed, don't re-log.
 - **Escalate when** issue #1 "Add portallib v0.1 alpha" merges / code lands, a
   release/tag appears, PyPI/HF publishes, or paper-scale (Qwen3-8B / Gemma-3-4B)
